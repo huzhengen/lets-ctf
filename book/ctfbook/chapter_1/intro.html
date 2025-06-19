@@ -1,0 +1,299 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>CTF比赛类型与Move应用场景 - lets move ctf</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../../favicon.svg">
+        <link rel="shortcut icon" href="../../favicon.png">
+        <link rel="stylesheet" href="../../css/variables.css">
+        <link rel="stylesheet" href="../../css/general.css">
+        <link rel="stylesheet" href="../../css/chrome.css">
+        <link rel="stylesheet" href="../../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">lets move ctf</h1>
+
+                    <div class="right-buttons">
+                        <a href="../../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="第1节ctf简介与move应用"><a class="header" href="#第1节ctf简介与move应用">第1节：CTF简介与Move应用</a></h1>
+<h2 id="ctf比赛类型与move应用场景"><a class="header" href="#ctf比赛类型与move应用场景">CTF比赛类型与Move应用场景</a></h2>
+<p>欢迎来到 <strong>Move CTF 挑战课程</strong> 的第一节！本节将带你走进 CTF（Capture The Flag，夺旗赛）的世界，了解其主要比赛类型，并探索 Move 编程语言在 Sui 区块链上的 CTF 应用场景。通过理论与实践结合，你将迈出学习 Move CTF 的第一步。</p>
+<h3 id="什么是ctf"><a class="header" href="#什么是ctf">什么是CTF？</a></h3>
+<p>CTF 是一种网络安全竞赛形式，参与者通过解决技术挑战获取隐藏的 “flag”（通常是一串特定格式的字符串，如 <code>CTF{xxx}</code>），以证明他们的技能。CTF 起源于 1996 年的 DEFCON 安全大会，现已成为全球安全爱好者的热门活动。比赛类型主要分为以下两种：</p>
+<h4 id="1-jeopardy模式"><a class="header" href="#1-jeopardy模式">1. Jeopardy模式</a></h4>
+<ul>
+<li><strong>特点</strong>：解题模式，参与者面对一系列独立题目，涵盖密码学、逆向工程、Web 安全、区块链等类别。</li>
+<li><strong>流程</strong>：
+<ul>
+<li>题目提供线索（如代码片段、文件或服务器地址）。</li>
+<li>选手分析问题，找到 flag 并提交。</li>
+<li>根据解题数量和速度计分。</li>
+</ul>
+</li>
+<li><strong>适合人群</strong>：初学者和个人选手，因其灵活性和低门槛广受欢迎。</li>
+<li><strong>Move相关示例</strong>：分析一段 Sui 链上的 Move 智能合约代码，找出隐藏的 flag 或利用漏洞提取数据。</li>
+<li><strong>真实案例</strong>：
+<ul>
+<li>在 <a href="https://ctftime.org/">CTFtime</a> 上，<a href="https://www.hackthebox.com/events/cyber-apocalypse-2024">HackTheBox Cyber Apocalypse CTF 2024 Blockchain Challenges</a> 包含区块链题目，要求选手审计智能合约。</li>
+<li>Sui 社区在 2024 年推出了 <a href="https://movectf2024.movebit.xyz/">MoveCTF 2024</a>，其中包括基于 Move 的解题挑战。</li>
+</ul>
+</li>
+<li><strong>现状</strong>：当前 Move CTF（如 justCTF、MoveCTF）主要采用 Jeopardy 模式，题目以代码审计和逻辑分析为主。</li>
+</ul>
+<h4 id="2-attack-defense模式"><a class="header" href="#2-attack-defense模式">2. Attack-Defense模式</a></h4>
+<ul>
+<li><strong>特点</strong>：攻防对抗模式，团队在虚拟环境中同时攻击对手服务并防御自身系统。</li>
+<li><strong>流程</strong>：
+<ul>
+<li>每个团队维护一个包含漏洞的服务。</li>
+<li>攻击对手以获取 flag，同时修补自身漏洞。</li>
+<li>综合得分决定排名。</li>
+</ul>
+</li>
+<li><strong>适合人群</strong>：进阶选手和团队，因其更接近真实网络攻防场景。</li>
+<li><strong>Move相关示例</strong>：模拟 Sui 区块链网络，攻击对手的 Move 合约（如利用未授权访问漏洞窃取资源），同时保护自己的合约免受攻击。</li>
+<li><strong>现状</strong>：目前 Move CTF 未见公开的攻防模式案例，更多聚焦于解题形式的挑战。</li>
+</ul>
+<h4 id="ctf的吸引力"><a class="header" href="#ctf的吸引力">CTF的吸引力</a></h4>
+<ul>
+<li><strong>技能提升</strong>：涵盖编程、逆向、安全分析等多领域。</li>
+<li><strong>实战性</strong>：模拟真实安全场景，如区块链漏洞利用。</li>
+<li><strong>趣味性</strong>：解题过程如同解谜，充满成就感。</li>
+</ul>
+<h3 id="move-在-ctf-中的应用"><a class="header" href="#move-在-ctf-中的应用">Move 在 CTF 中的应用</a></h3>
+<p>Move 是由 Facebook（现 Meta）为 Diem 区块链设计的一种编程语言，后被 Sui 公链采用并优化。它以资源导向和类型安全著称，灵感来源于 Rust。在 Sui 生态中，Move 用于编写智能合约和去中心化应用（DApp）。以下是 Move 在 CTF 中的主要应用场景：</p>
+<h4 id="1-智能合约漏洞挖掘"><a class="header" href="#1-智能合约漏洞挖掘">1. 智能合约漏洞挖掘</a></h4>
+<ul>
+<li><strong>背景</strong>：Sui 链上的 Move 合约是 CTF 题目的常见素材，选手需分析代码，寻找漏洞。</li>
+<li><strong>常见考点</strong>：
+<ul>
+<li><strong>整数溢出/下溢</strong>：Move 未内置溢出检查，可能导致非法操作。例如，代币转移逻辑可能因溢出被绕过。</li>
+<li><strong>逻辑错误</strong>：如条件判断失误，导致意外行为。</li>
+</ul>
+</li>
+<li><strong>示例</strong>：假设一个 Move 代币合约未检查整数加法的溢出，选手可通过构造大额输入转移超出余额的代币，flag 可能隐藏在交易事件中。</li>
+<li><strong>Move特点</strong>：Move 的类型系统减少了某些传统漏洞（如重入攻击），但仍需关注逻辑和边界问题。</li>
+</ul>
+<h4 id="2-资源管理挑战"><a class="header" href="#2-资源管理挑战">2. 资源管理挑战</a></h4>
+<ul>
+<li><strong>Move特性</strong>：Move 的资源（struct）具有线性类型特性，不可随意复制或丢弃，必须显式转移或销毁。这是 Sui 链上对象（Object）管理的核心机制。</li>
+<li><strong>CTF应用</strong>：
+<ul>
+<li>题目可能涉及资源管理不当（如未销毁资源）导致的漏洞。</li>
+<li>或通过资源转移逻辑的错误绕过限制。</li>
+</ul>
+</li>
+<li><strong>示例</strong>：设想一个 Move 合约中，开发者忘记销毁旧资源，导致资源被重复使用，选手可利用此漏洞执行双重花费。</li>
+</ul>
+<h4 id="3-代码逻辑逆向"><a class="header" href="#3-代码逻辑逆向">3. 代码逻辑逆向</a></h4>
+<ul>
+<li><strong>背景</strong>：CTF 常要求选手理解代码意图，寻找隐藏信息。</li>
+<li><strong>Move场景</strong>：
+<ul>
+<li>flag 可能藏在注释、变量名或 Sui 链上的事件输出中。</li>
+<li>或通过复杂逻辑（如循环、条件）计算得出。</li>
+</ul>
+</li>
+<li><strong>真实案例</strong>：在 justCTF 2024 Teaser 的“The Otter Scrolls”题目（<a href="https://2024.justctf.team/challenges/11">justCTF 2024</a>）中，选手需分析 Sui Move 合约 <code>Spellbook</code>，调用 <code>cast_spell</code> 函数并传入参数 <code>vector[1, 0, 3, 3, 3]</code>，触发 flag 输出。</li>
+<li><strong>总结</strong>：Move 的资源导向和类型安全特性为 CTF 提供了独特的技术挑战，目前通过 Jeopardy 模式吸引爱好者参与并提升 Sui 生态的安全意识。</li>
+</ul>
+<h3 id="学习目标"><a class="header" href="#学习目标">学习目标</a></h3>
+<p>通过本节课，你将：</p>
+<ul>
+<li>理解 CTF 比赛的基本形式（Jeopardy 和 Attack-Defense）。</li>
+<li>认识 Move 在 Sui 链 CTF 中的应用场景。</li>
+<li>通过实践，初步体验 Move 代码分析，迈出 CTF 第一步。</li>
+</ul>
+<p>准备好了吗？接下来，我们将通过一个简单实践，体验 Move CTF！</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../../ctfbook/chapter_1/index.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../../ctfbook/chapter_1/practice.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../../ctfbook/chapter_1/index.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../../ctfbook/chapter_1/practice.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../../elasticlunr.min.js"></script>
+        <script src="../../mark.min.js"></script>
+        <script src="../../searcher.js"></script>
+
+        <script src="../../clipboard.min.js"></script>
+        <script src="../../highlight.js"></script>
+        <script src="../../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
