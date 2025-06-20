@@ -157,8 +157,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="前言"><a class="header" href="#前言">前言</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="前言-1"><a class="header" href="#前言-1">前言</a></h1>
-<h2 id="课程目标与概述"><a class="header" href="#课程目标与概述">课程目标与概述</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="课程目标与概述"><a class="header" href="#课程目标与概述">课程目标与概述</a></h1>
 <h3 id="课程目标"><a class="header" href="#课程目标">课程目标</a></h3>
 <p>欢迎参加 <strong>Move CTF 挑战课程</strong>！本课程旨在帮助你掌握 Move 编程语言在 CTF（Capture The Flag）比赛中的应用，培养分析代码和解决安全挑战的能力。通过八节课的学习，你将能够：</p>
 <ul>
@@ -249,8 +248,7 @@
 </ul>
 <p>准备好这些工具后，你就可以无缝进入课程实践环节。遇到安装问题？请提前联系课程团队或查阅相关文档。</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="第1节ctf简介与move应用"><a class="header" href="#第1节ctf简介与move应用">第1节：CTF简介与Move应用</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="第1节ctf简介与move应用-1"><a class="header" href="#第1节ctf简介与move应用-1">第1节：CTF简介与Move应用</a></h1>
-<h2 id="ctf比赛类型与move应用场景"><a class="header" href="#ctf比赛类型与move应用场景">CTF比赛类型与Move应用场景</a></h2>
+<div style="break-before: page; page-break-before: always;"></div><h2 id="ctf比赛类型与move应用场景"><a class="header" href="#ctf比赛类型与move应用场景">CTF比赛类型与Move应用场景</a></h2>
 <p>欢迎来到 <strong>Move CTF 挑战课程</strong> 的第一节！本节将带你走进 CTF（Capture The Flag，夺旗赛）的世界，了解其主要比赛类型，并探索 Move 编程语言在 Sui 区块链上的 CTF 应用场景。通过理论与实践结合，你将迈出学习 Move CTF 的第一步。</p>
 <h3 id="什么是ctf"><a class="header" href="#什么是ctf">什么是CTF？</a></h3>
 <p>CTF 是一种网络安全竞赛形式，参与者通过解决技术挑战获取隐藏的 “flag”（通常是一串特定格式的字符串，如 <code>CTF{xxx}</code>），以证明他们的技能。CTF 起源于 1996 年的 DEFCON 安全大会，现已成为全球安全爱好者的热门活动。比赛类型主要分为以下两种：</p>
@@ -498,99 +496,8 @@ solve_chapter_1 = "0x0"
 │  └──                                                                                                  │
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────────╯
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="task1"><a class="header" href="#task1">Task1</a></h1>
-<h2 id="任务代码"><a class="header" href="#任务代码">任务代码</a></h2>
-<p>以下是待分析的 Move 合约，完整代码请查看 <a href="https://github.com/hoh-zone/lets-ctf/tree/main/src/ctfbook/chapter_1/task1">挑战合约</a>：</p>
-<pre><code>PackageID: 0xcd6050b4e93c5bdc7149f2bf0b69202ec297bf1532d500e896dbefcd15d811f4 
-Challenge ObjectID: 0xf5dc0a1701384ff0ff6697ae9de37ee0cc832ff1fd511232aca7d0fff282d026
-</code></pre>
-<pre><code class="language-move">module task1::task1 {
-    use std::bcs;
-    use std::hash::sha3_256;
-    use std::string::{Self, String};
-    use sui::event;
-    use sui::random::{Self, Random};
-    use sui::transfer::share_object;
-
-    const EINVALID_HASH: u64 = 0;
-    const EINVALID_MAGIC: u64 = 1;
-    const EINVALID_SEED: u64 = 2;
-
-    public struct FlagEvent has copy, drop {
-        sender: address,
-        flag: String,
-        attempt_count: u64,
-        github_id: String,
-        success: bool
-    }
-
-    public struct Challenge has key {
-        id: UID,
-        secret: String,
-        attempt_count: u64,
-        last_seed: u64
-    }
-
-    fun init(ctx: &amp;mut TxContext) {
-        let challenge = Challenge {
-            id: object::new(ctx),
-            secret: string::utf8(b"MoveCTF_task1"),
-            attempt_count: 0,
-            last_seed: 0
-        };
-        share_object(challenge);
-    }
-
-    public entry fun get_flag(
-        hash_input: vector&lt;u8&gt;,
-        github_id: String,
-        magic_number: u64,
-        seed: u64,
-        challenge: &amp;mut Challenge,
-        rand: &amp;Random,
-        ctx: &amp;mut TxContext
-    ) {
-        let mut bcs_input = bcs::to_bytes(&amp;challenge.secret);
-        vector::append(&amp;mut bcs_input, *github_id.as_bytes());
-        let expected_hash = sha3_256(bcs_input);
-        assert!(hash_input == expected_hash, EINVALID_HASH);
-
-        challenge.attempt_count = challenge.attempt_count + 1;
-
-        let expected_magic = (challenge.attempt_count * challenge.attempt_count + challenge.last_seed) % 1000 + seed;
-        assert!(magic_number == expected_magic, EINVALID_MAGIC);
-
-        let secret_bytes = *string::as_bytes(&amp;challenge.secret);
-        let secret_len = vector::length(&amp;secret_bytes);
-        assert!(seed == secret_len * 2, EINVALID_SEED);
-
-        challenge.secret = getRandomString(rand, ctx);
-        challenge.last_seed = seed;
-
-        event::emit(FlagEvent {
-            sender: tx_context::sender(ctx),
-            flag: string::utf8(b"CTF{MoveCTF-Task1}"),
-            github_id,
-            attempt_count: challenge.attempt_count,
-            success: true
-        });
-    }
-
-    fun getRandomString(rand: &amp;Random, ctx: &amp;mut TxContext): String {
-        let mut gen = random::new_generator(rand, ctx);
-        let mut str_len = random::generate_u8_in_range(&amp;mut gen, 4, 32);
-        let mut rand_vec: vector&lt;u8&gt; = b"";
-        while (str_len != 0) {
-            let rand_num = random::generate_u8_in_range(&amp;mut gen, 34, 126);
-            vector::push_back(&amp;mut rand_vec, rand_num);
-            str_len = str_len - 1;
-        };
-        string::utf8(rand_vec)
-    }
-}
-</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="第2节基础代码审计"><a class="header" href="#第2节基础代码审计">第2节：基础代码审计</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="第2节基础代码审计-1"><a class="header" href="#第2节基础代码审计-1">第2节：基础代码审计</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="阅读move代码与常见问题"><a class="header" href="#阅读move代码与常见问题">阅读Move代码与常见问题</a></h1>
 <h2 id="阅读-move-代码与常见问题"><a class="header" href="#阅读-move-代码与常见问题">阅读 Move 代码与常见问题</a></h2>
 <p>欢迎来到 <strong>Move CTF 挑战课程</strong> 的第二节！在第一节中，你通过一个签到挑战初步体验了 Move 代码的分析和解题流程。现在，我们将迈出审计的第一步，深入学习如何阅读 Move 代码并识别常见问题。本节将通过详细的理论讲解和实践环节，帮助你掌握基础审计技能，为后续更复杂的漏洞分析打下坚实基础。</p>
 <h4 id="1-模块与函数"><a class="header" href="#1-模块与函数">1. 模块与函数</a></h4>
@@ -926,163 +833,705 @@ public entry fun withdraw_commision(
     }
 }
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="task2"><a class="header" href="#task2">Task2</a></h1>
-<h2 id="任务代码-1"><a class="header" href="#任务代码-1">任务代码</a></h2>
-<p>以下是待分析的 Move 合约，完整代码请查看 <a href="https://github.com/hoh-zone/lets-ctf/tree/main/src/ctfbook/chapter_2/task2">挑战合约</a>：</p>
-<pre><code>PackageID: 0xd26a14084af49f68d4612ef0815518c251f7a0459eaf2cbcb2757efafad442c5 
-Challenge ObjectID: 0x22c1330b43313cee7f0ca0ce36965343c1ae40577d80a4ffa8ab12986f50dea1
+<div style="break-before: page; page-break-before: always;"></div><h1 id="第3章泛型类型安全"><a class="header" href="#第3章泛型类型安全">第3章：泛型类型安全</a></h1>
+<h2 id="引言"><a class="header" href="#引言">引言</a></h2>
+<p>在区块链智能合约开发中，安全性是核心关注点。Sui Move 作为一种专为高性能区块链设计的语言，通过其强大的类型系统为开发者提供了安全保障。然而，某些特性如果使用不当，可能引入严重漏洞。本章将聚焦 <strong>Sui Move 的泛型（Generics）</strong>，深入探讨其在智能合约中的应用以及未检查泛型类型带来的安全风险。</p>
+<hr />
+<h2 id="1-sui-move-中的泛型"><a class="header" href="#1-sui-move-中的泛型">1. Sui Move 中的泛型</a></h2>
+<h3 id="11-什么是泛型"><a class="header" href="#11-什么是泛型">1.1 什么是泛型？</a></h3>
+<p>泛型是编程语言中的一种机制，允许开发者编写可以处理多种类型的通用代码，从而提高代码的灵活性和复用性。在 Sui Move 中，泛型通过类型参数（如 <code>&lt;T&gt;</code>）实现，类型参数可以在结构体、函数或模块定义中使用，指定在运行时替换的具体类型，类型参数通过尖括号 <code>&lt;T&gt;</code> 定义。</p>
+<p>例如，在合约中，<code>VoteToken</code> 结构体使用泛型 <code>&lt;T&gt;</code> 表示投票凭证的类型：</p>
+<pre><code>public struct VoteToken&lt;phantom T&gt; has key, store {
+    id: UID,
+    amount: u64,
+}
 </code></pre>
-<pre><code class="language-move">module task2::task2 {
-    use sui::event;
-    use sui::random::{Random, generate_u64, new_generator};
-    use sui::clock::{Self, Clock};
-    use std::hash;
+<ul>
+<li><code>&lt;T&gt;</code> 是类型参数，可以代表任何类型（如 <code>OfficialToken</code> 或攻击者定义的 <code>FakeToken</code>）。</li>
+<li><code>phantom</code> 关键字表示 <code>&lt;T&gt;</code> 仅用于类型标记，不影响 <code>VoteToken</code> 的存储结构（即不会在链上存储 <code>&lt;T&gt;</code> 的实例）。</li>
+<li><code>has key, store</code> 表明 <code>VoteToken</code> 是一个链上对象，可以存储和转移。</li>
+</ul>
+<p>泛型的核心优势是允许开发者编写通用的逻辑，而无需为每种类型重复实现代码。</p>
+<h3 id="12-泛型的语法与能力"><a class="header" href="#12-泛型的语法与能力">1.2 泛型的语法与能力</a></h3>
+<p>在 Sui Move 中，泛型的使用受到类型能力的约束：</p>
+<ul>
+<li>
+<p><strong>结构体泛型</strong>：如 <code>VoteToken&lt;phantom T&gt;</code>，类型参数 <code>&lt;T&gt;</code> 通常需要满足特定能力（如 <code>drop</code> 或 <code>store</code>）。例如，<code>phantom</code> 参数通常要求 <code>drop</code> 能力。</p>
+</li>
+<li>
+<p><strong>函数泛型</strong>：函数可以声明泛型参数，限制调用时传入的类型。例如：</p>
+<pre><code>public entry fun register_voter&lt;T&gt;(ctx: &amp;mut TxContext) {
+  let sender = tx_context::sender(ctx);
+  let token = VoteToken&lt;T&gt; {
+      id: object::new(ctx),
+      amount: 100,
+  };
+  public_transfer(token, sender);
+}
+</code></pre>
+<ul>
+<li><code>&lt;T&gt;</code> 允许函数为任意类型创建 <code>VoteToken</code>。</li>
+<li>调用者可以在调用时指定具体类型，如 <code>register_voter&lt;0x1::Token::Token&gt;</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>多类型参数</strong>：支持多个类型参数，顺序重要。例如：</p>
+<pre><code>public struct Pair&lt;T, U&gt; {
+  first: T,
+  second: U,
+}
+public fun new_pair&lt;T, U&gt;(first: T, second: U): Pair&lt;T, U&gt; {
+  Pair { first, second }
+}
+</code></pre>
+<ul>
+<li><code>&lt;T, U&gt;</code> 的顺序决定类型签名，<code>Pair&lt;u8, bool&gt;</code> 和 <code>Pair&lt;bool, u8&gt;</code> 是不同类型，无法直接比较。</li>
+</ul>
+</li>
+<li>
+<p><strong>幻影类型参数</strong>：未在字段或方法中使用的类型参数，用于区分类型。例如：</p>
+<pre><code>public struct Coin&lt;phantom T&gt; {
+  value: u64
+}
+
+public struct USD {}
+public struct EUR {}
+
+#[test]
+fun test_phantom_type() {
+    let coin1: Coin&lt;USD&gt; = Coin { value: 10 };
+    let coin2: Coin&lt;EUR&gt; = Coin { value: 20 };
+
+    // Unpacking is identical because the phantom type parameter is not used.
+    let Coin { value: _ } = coin1;
+    let Coin { value: _ } = coin2;
+}
+</code></pre>
+<ul>
+<li><code>Coin&lt;USD&gt;</code> 和 <code>Coin&lt;EUR&gt;</code> 使用 <code>&lt;T&gt;</code> 区分不同货币，防止混淆。</li>
+</ul>
+</li>
+<li>
+<p><strong>能力约束</strong>：类型参数可通过能力约束（如 <code>T: drop</code>）限制行为。例如：</p>
+<pre><code>public struct Droppable&lt;T: drop&gt; {
+  value: T,
+}
+public struct CopyableDroppable&lt;T: copy + drop&gt; {
+  value: T,
+}
+</code></pre>
+<ul>
+<li><code>&lt;T&gt;</code> 必须具有指定能力，否则编译器报错。例如，<code>NoAbilities</code> 结构体无能力，无法用于 <code>Droppable&lt;NoAbilities&gt;</code>.</li>
+</ul>
+</li>
+</ul>
+<h3 id="13-泛型的应用场景"><a class="header" href="#13-泛型的应用场景">1.3 泛型的应用场景</a></h3>
+<p>在 Sui Move 智能合约中，泛型广泛应用于：</p>
+<ul>
+<li><strong>资源标识</strong>：如 <code>VoteToken&lt;T&gt;</code>，通过 <code>&lt;T&gt;</code> 区分不同类型的凭证（如治理代币、投票权）。</li>
+<li><strong>模块复用</strong>：编写通用逻辑，适配多种类型。例如，<code>vote&lt;T&gt;</code> 函数处理不同类型的 <code>VoteToken</code>。</li>
+<li><strong>跨模块交互</strong>：泛型支持模块与外部类型交互，增加灵活性。</li>
+<li><strong>标准库</strong>：如 <code>vector&lt;T&gt;</code>（动态数组）和 <code>Option&lt;T&gt;</code>（可选值），分别存储任意类型序列和表示可能缺失的值。</li>
+<li><strong>抽象实现</strong>：定义通用接口或行为，允许不同类型共享逻辑。</li>
+</ul>
+<p>在样例合约中，泛型用于：</p>
+<ul>
+<li><code>VoteToken&lt;phantom T&gt;</code>：标记投票凭证的合法性。</li>
+<li><code>register_voter&lt;T&gt;</code> 和 <code>vote&lt;T&gt;</code>：支持不同类型凭证的分配和使用。</li>
+</ul>
+<p>然而，这种灵活性可能被攻击者利用，导致安全漏洞。</p>
+<hr />
+<h2 id="2-未检查泛型类型的安全风险"><a class="header" href="#2-未检查泛型类型的安全风险">2. 未检查泛型类型的安全风险</a></h2>
+<h3 id="21-泛型漏洞的本质"><a class="header" href="#21-泛型漏洞的本质">2.1 泛型漏洞的本质</a></h3>
+<p>在 Sui Move 中，泛型类型是由调用者在运行时提供的“用户输入”。如果合约未验证泛型类型 <code>&lt;T&gt;</code> 是否符合预期，攻击者可以传入任意类型，导致以下安全问题：</p>
+<ul>
+<li><strong>伪造凭证</strong>：攻击者创建非法类型的对象（如 <code>VoteToken&lt;FakeToken&gt;</code>）绕过权限检查。</li>
+<li><strong>逻辑破坏</strong>：非预期类型导致合约状态异常，影响核心功能（如投票结果错误）。</li>
+<li><strong>资源滥用</strong>：攻击者利用伪造类型创建无效资源，干扰合约运行或耗尽 Gas.</li>
+</ul>
+<p>在 <code>VoteChain</code> 合约中，<code>register_voter&lt;T&gt;</code> 和 <code>vote&lt;T&gt;</code> 函数未检查 <code>&lt;T&gt;</code> 类型，存在严重漏洞：</p>
+<pre><code>public entry fun register_voter&lt;T&gt;(ctx: &amp;mut TxContext) {
+    let sender = tx_context::sender(ctx);
+    let token = VoteToken&lt;T&gt; {
+        id: object::new(ctx),
+        amount: 100,
+    };
+    public_transfer(token, sender);
+}
+
+public entry fun vote&lt;T&gt;(store: &amp;mut VoteStore, token: &amp;VoteToken&lt;T&gt;, proposal_id: u64) {
+    assert!(token.amount &gt; 0, 1);
+    assert!(object_table::contains(&amp;store.proposals, proposal_id), 2);
+    let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_id);
+    proposal.votes = proposal.votes + token.amount;
+}
+</code></pre>
+<ul>
+<li><strong>漏洞</strong>：<code>register_voter&lt;T&gt;</code> 允许任何 <code>&lt;T&gt;</code> 创建 <code>VoteToken</code>，<code>vote&lt;T&gt;</code> 未验证 <code>token</code> 的类型。</li>
+<li><strong>后果</strong>：攻击者可以伪造 <code>VoteToken</code> 并投票，非法影响提案结果.</li>
+</ul>
+<h3 id="22-漏洞案例分析"><a class="header" href="#22-漏洞案例分析">2.2 漏洞案例分析</a></h3>
+<p>假设 <code>VoteChain</code> 是一个去中心化投票系统，设计意图是只有持有 <code>OfficialToken</code> 类型凭证的用户才能投票。然而，由于泛 type漏洞，攻击者可以：</p>
+<ol>
+<li>定义一个伪造类型 <code>FakeToken</code>:</li>
+</ol>
+<pre><code>module attacker::fake_token {
+ public struct FakeToken has drop {}
+}
+</code></pre>
+<ol start="2">
+<li>调用 <code>register_voter&lt;attacker::fake_token::FakeToken&gt;</code> 获取 <code>VoteToken&lt;FakeToken&gt;</code>.</li>
+<li>使用伪造的 <code>VoteToken&lt;FakeToken&gt;</code> 调用 <code>vote</code>，增加任意提案的票数。</li>
+</ol>
+<p>这种攻击在区块链 CTF 中非常常见，因为泛型类型作为“隐形输入”，容易被开发者忽视。在现实世界的治理合约或 DeFi 协议中，类似漏洞可能导致：</p>
+<ul>
+<li>非法用户控制投票结果。</li>
+<li>资金分配错误。</li>
+<li>协议治理被恶意操纵。</li>
+</ul>
+<h3 id="23-漏洞的影响"><a class="header" href="#23-漏洞的影响">2.3 漏洞的影响</a></h3>
+<p>未检查泛型类型的漏洞可能导致：</p>
+<ul>
+<li><strong>完整性破坏</strong>：投票系统等依赖权限控制的合约可能被非法操作。</li>
+<li><strong>经济损失</strong>：在 DeFi 或 DAO 中，伪造凭证可能导致资金被窃取或错误分配。</li>
+<li><strong>拒绝服务</strong>：攻击者可能创建大量伪造对象，增加 Gas 消耗或干扰正常功能。</li>
+</ul>
+<p>在 <code>VoteChain</code> 的场景中，攻击者通过伪造 <code>VoteToken</code> 可以：</p>
+<ul>
+<li>使无效用户参与投票，破坏提案的公平性。</li>
+<li>操纵提案结果，影响治理决策。</li>
+<li>降低系统的可信度，损害用户信任。</li>
+</ul>
+<hr />
+<h2 id="3-防御泛型漏洞"><a class="header" href="#3-防御泛型漏洞">3. 防御泛型漏洞</a></h2>
+<h3 id="31-使用-stdtype_name-进行类型检查"><a class="header" href="#31-使用-stdtype_name-进行类型检查">3.1 使用 <code>std::type_name</code> 进行类型检查</a></h3>
+<p>Sui Move 提供了 <code>std::type_name</code> 模块，用于在运行时检查类型的名称。开发者可以在合约中添加断言，确保泛型类型 <code>&lt;T&gt;</code> 符合预期：</p>
+<pre><code>use std::type_name;
+
+public entry fun register_voter&lt;T&gt;(ctx: &amp;mut TxContext) {
+    assert!(type_name::get&lt;T&gt;() == type_name::get&lt;votechain::OfficialToken&gt;(), 3);
+    let sender = tx_context::sender(ctx);
+    let token = VoteToken&lt;T&gt; {
+        id: object::new(ctx),
+        amount: 100,
+    };
+    public_transfer(token, sender);
+}
+</code></pre>
+<ul>
+<li><code>type_name::get&lt;T&gt;()</code> 返回 <code>&lt;T&gt;</code> 的完整类型名称（包括模块和结构体名称，如 <code>votechain::OfficialToken</code>）。</li>
+<li>断言确保 <code>&lt;T&gt;</code> 是 <code>votechain::OfficialToken</code>，否则中止交易。</li>
+<li>错误码 <code>3</code>（建议定义为常量，如 <code>const E_INVALID_TYPE: u64 = 3;</code>）便于调试。</li>
+</ul>
+<p>这种方法通过限制 <code>&lt;T&gt;</code> 到白名单类型，有效防止伪造凭证。</p>
+<h3 id="32-设计安全合约的注意事项"><a class="header" href="#32-设计安全合约的注意事项">3.2 设计安全合约的注意事项</a></h3>
+<ul>
+<li><strong>最小化泛型使用</strong>：仅在必要时使用泛型，避免过度灵活性。</li>
+<li><strong>显式验证</strong>：对所有泛型参数进行运行时检查。</li>
+<li><strong>错误处理</strong>：定义清晰的错误码，便于调试和审计。</li>
+<li><strong>测试覆盖</strong>：编写测试用例，模拟攻击者伪造类型的情景。</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="了解泛型类型安全"><a class="header" href="#了解泛型类型安全">了解泛型类型安全</a></h1>
+<h2 id="引言-1"><a class="header" href="#引言-1">引言</a></h2>
+<p>在区块链智能合约开发中，安全性是核心关注点。Sui Move 作为一种专为高性能区块链设计的语言，通过其强大的类型系统为开发者提供了安全保障。然而，某些特性如果使用不当，可能引入严重漏洞。本章将聚焦 <strong>Sui Move 的泛型（Generics）</strong>，深入探讨其在智能合约中的应用以及未检查泛型类型带来的安全风险。</p>
+<hr />
+<h2 id="1-sui-move-中的泛型-1"><a class="header" href="#1-sui-move-中的泛型-1">1. Sui Move 中的泛型</a></h2>
+<h3 id="11-什么是泛型-1"><a class="header" href="#11-什么是泛型-1">1.1 什么是泛型？</a></h3>
+<p>泛型是编程语言中的一种机制，允许开发者编写可以处理多种类型的通用代码，从而提高代码的灵活性和复用性。在 Sui Move 中，泛型通过类型参数（如 <code>&lt;T&gt;</code>）实现，类型参数可以在结构体、函数或模块定义中使用，指定在运行时替换的具体类型，类型参数通过尖括号 <code>&lt;T&gt;</code> 定义。</p>
+<p>例如，在合约中，<code>VoteToken</code> 结构体使用泛型 <code>&lt;T&gt;</code> 表示投票凭证的类型：</p>
+<pre><code>public struct VoteToken&lt;phantom T&gt; has key, store {
+    id: UID,
+    amount: u64,
+}
+</code></pre>
+<ul>
+<li><code>&lt;T&gt;</code> 是类型参数，可以代表任何类型（如 <code>OfficialToken</code> 或攻击者定义的 <code>FakeToken</code>）。</li>
+<li><code>phantom</code> 关键字表示 <code>&lt;T&gt;</code> 仅用于类型标记，不影响 <code>VoteToken</code> 的存储结构（即不会在链上存储 <code>&lt;T&gt;</code> 的实例）。</li>
+<li><code>has key, store</code> 表明 <code>VoteToken</code> 是一个链上对象，可以存储和转移。</li>
+</ul>
+<p>泛型的核心优势是允许开发者编写通用的逻辑，而无需为每种类型重复实现代码。</p>
+<h3 id="12-泛型的语法与能力-1"><a class="header" href="#12-泛型的语法与能力-1">1.2 泛型的语法与能力</a></h3>
+<p>在 Sui Move 中，泛型的使用受到类型能力的约束：</p>
+<ul>
+<li>
+<p><strong>结构体泛型</strong>：如 <code>VoteToken&lt;phantom T&gt;</code>，类型参数 <code>&lt;T&gt;</code> 通常需要满足特定能力（如 <code>drop</code> 或 <code>store</code>）。例如，<code>phantom</code> 参数通常要求 <code>drop</code> 能力。</p>
+</li>
+<li>
+<p><strong>函数泛型</strong>：函数可以声明泛型参数，限制调用时传入的类型。例如：</p>
+<pre><code>public entry fun register_voter&lt;T&gt;(ctx: &amp;mut TxContext) {
+  let sender = tx_context::sender(ctx);
+  let token = VoteToken&lt;T&gt; {
+      id: object::new(ctx),
+      amount: 100,
+  };
+  public_transfer(token, sender);
+}
+</code></pre>
+<ul>
+<li><code>&lt;T&gt;</code> 允许函数为任意类型创建 <code>VoteToken</code>。</li>
+<li>调用者可以在调用时指定具体类型，如 <code>register_voter&lt;0x1::Token::Token&gt;</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>多类型参数</strong>：支持多个类型参数，顺序重要。例如：</p>
+<pre><code>public struct Pair&lt;T, U&gt; {
+  first: T,
+  second: U,
+}
+public fun new_pair&lt;T, U&gt;(first: T, second: U): Pair&lt;T, U&gt; {
+  Pair { first, second }
+}
+</code></pre>
+<ul>
+<li><code>&lt;T, U&gt;</code> 的顺序决定类型签名，<code>Pair&lt;u8, bool&gt;</code> 和 <code>Pair&lt;bool, u8&gt;</code> 是不同类型，无法直接比较。</li>
+</ul>
+</li>
+<li>
+<p><strong>幻影类型参数</strong>：未在字段或方法中使用的类型参数，用于区分类型。例如：</p>
+<pre><code>public struct Coin&lt;phantom T&gt; {
+  value: u64
+}
+
+public struct USD {}
+public struct EUR {}
+
+#[test]
+fun test_phantom_type() {
+    let coin1: Coin&lt;USD&gt; = Coin { value: 10 };
+    let coin2: Coin&lt;EUR&gt; = Coin { value: 20 };
+
+    // Unpacking is identical because the phantom type parameter is not used.
+    let Coin { value: _ } = coin1;
+    let Coin { value: _ } = coin2;
+}
+</code></pre>
+<ul>
+<li><code>Coin&lt;USD&gt;</code> 和 <code>Coin&lt;EUR&gt;</code> 使用 <code>&lt;T&gt;</code> 区分不同货币，防止混淆。</li>
+</ul>
+</li>
+<li>
+<p><strong>能力约束</strong>：类型参数可通过能力约束（如 <code>T: drop</code>）限制行为。例如：</p>
+<pre><code>public struct Droppable&lt;T: drop&gt; {
+  value: T,
+}
+public struct CopyableDroppable&lt;T: copy + drop&gt; {
+  value: T,
+}
+</code></pre>
+<ul>
+<li><code>&lt;T&gt;</code> 必须具有指定能力，否则编译器报错。例如，<code>NoAbilities</code> 结构体无能力，无法用于 <code>Droppable&lt;NoAbilities&gt;</code>.</li>
+</ul>
+</li>
+</ul>
+<h3 id="13-泛型的应用场景-1"><a class="header" href="#13-泛型的应用场景-1">1.3 泛型的应用场景</a></h3>
+<p>在 Sui Move 智能合约中，泛型广泛应用于：</p>
+<ul>
+<li><strong>资源标识</strong>：如 <code>VoteToken&lt;T&gt;</code>，通过 <code>&lt;T&gt;</code> 区分不同类型的凭证（如治理代币、投票权）。</li>
+<li><strong>模块复用</strong>：编写通用逻辑，适配多种类型。例如，<code>vote&lt;T&gt;</code> 函数处理不同类型的 <code>VoteToken</code>。</li>
+<li><strong>跨模块交互</strong>：泛型支持模块与外部类型交互，增加灵活性。</li>
+<li><strong>标准库</strong>：如 <code>vector&lt;T&gt;</code>（动态数组）和 <code>Option&lt;T&gt;</code>（可选值），分别存储任意类型序列和表示可能缺失的值。</li>
+<li><strong>抽象实现</strong>：定义通用接口或行为，允许不同类型共享逻辑。</li>
+</ul>
+<p>在样例合约中，泛型用于：</p>
+<ul>
+<li><code>VoteToken&lt;phantom T&gt;</code>：标记投票凭证的合法性。</li>
+<li><code>register_voter&lt;T&gt;</code> 和 <code>vote&lt;T&gt;</code>：支持不同类型凭证的分配和使用。</li>
+</ul>
+<p>然而，这种灵活性可能被攻击者利用，导致安全漏洞。</p>
+<hr />
+<h2 id="2-未检查泛型类型的安全风险-1"><a class="header" href="#2-未检查泛型类型的安全风险-1">2. 未检查泛型类型的安全风险</a></h2>
+<h3 id="21-泛型漏洞的本质-1"><a class="header" href="#21-泛型漏洞的本质-1">2.1 泛型漏洞的本质</a></h3>
+<p>在 Sui Move 中，泛型类型是由调用者在运行时提供的“用户输入”。如果合约未验证泛型类型 <code>&lt;T&gt;</code> 是否符合预期，攻击者可以传入任意类型，导致以下安全问题：</p>
+<ul>
+<li><strong>伪造凭证</strong>：攻击者创建非法类型的对象（如 <code>VoteToken&lt;FakeToken&gt;</code>）绕过权限检查。</li>
+<li><strong>逻辑破坏</strong>：非预期类型导致合约状态异常，影响核心功能（如投票结果错误）。</li>
+<li><strong>资源滥用</strong>：攻击者利用伪造类型创建无效资源，干扰合约运行或耗尽 Gas.</li>
+</ul>
+<p>在 <code>VoteChain</code> 合约中，<code>register_voter&lt;T&gt;</code> 和 <code>vote&lt;T&gt;</code> 函数未检查 <code>&lt;T&gt;</code> 类型，存在严重漏洞：</p>
+<pre><code>public entry fun register_voter&lt;T&gt;(ctx: &amp;mut TxContext) {
+    let sender = tx_context::sender(ctx);
+    let token = VoteToken&lt;T&gt; {
+        id: object::new(ctx),
+        amount: 100,
+    };
+    public_transfer(token, sender);
+}
+
+public entry fun vote&lt;T&gt;(store: &amp;mut VoteStore, token: &amp;VoteToken&lt;T&gt;, proposal_id: u64) {
+    assert!(token.amount &gt; 0, 1);
+    assert!(object_table::contains(&amp;store.proposals, proposal_id), 2);
+    let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_id);
+    proposal.votes = proposal.votes + token.amount;
+}
+</code></pre>
+<ul>
+<li><strong>漏洞</strong>：<code>register_voter&lt;T&gt;</code> 允许任何 <code>&lt;T&gt;</code> 创建 <code>VoteToken</code>，<code>vote&lt;T&gt;</code> 未验证 <code>token</code> 的类型。</li>
+<li><strong>后果</strong>：攻击者可以伪造 <code>VoteToken</code> 并投票，非法影响提案结果.</li>
+</ul>
+<h3 id="22-漏洞案例分析-1"><a class="header" href="#22-漏洞案例分析-1">2.2 漏洞案例分析</a></h3>
+<p>假设 <code>VoteChain</code> 是一个去中心化投票系统，设计意图是只有持有 <code>OfficialToken</code> 类型凭证的用户才能投票。然而，由于泛 type漏洞，攻击者可以：</p>
+<ol>
+<li>定义一个伪造类型 <code>FakeToken</code>:</li>
+</ol>
+<pre><code>module attacker::fake_token {
+ public struct FakeToken has drop {}
+}
+</code></pre>
+<ol start="2">
+<li>调用 <code>register_voter&lt;attacker::fake_token::FakeToken&gt;</code> 获取 <code>VoteToken&lt;FakeToken&gt;</code>.</li>
+<li>使用伪造的 <code>VoteToken&lt;FakeToken&gt;</code> 调用 <code>vote</code>，增加任意提案的票数。</li>
+</ol>
+<p>这种攻击在区块链 CTF 中非常常见，因为泛型类型作为“隐形输入”，容易被开发者忽视。在现实世界的治理合约或 DeFi 协议中，类似漏洞可能导致：</p>
+<ul>
+<li>非法用户控制投票结果。</li>
+<li>资金分配错误。</li>
+<li>协议治理被恶意操纵。</li>
+</ul>
+<h3 id="23-漏洞的影响-1"><a class="header" href="#23-漏洞的影响-1">2.3 漏洞的影响</a></h3>
+<p>未检查泛型类型的漏洞可能导致：</p>
+<ul>
+<li><strong>完整性破坏</strong>：投票系统等依赖权限控制的合约可能被非法操作。</li>
+<li><strong>经济损失</strong>：在 DeFi 或 DAO 中，伪造凭证可能导致资金被窃取或错误分配。</li>
+<li><strong>拒绝服务</strong>：攻击者可能创建大量伪造对象，增加 Gas 消耗或干扰正常功能。</li>
+</ul>
+<p>在 <code>VoteChain</code> 的场景中，攻击者通过伪造 <code>VoteToken</code> 可以：</p>
+<ul>
+<li>使无效用户参与投票，破坏提案的公平性。</li>
+<li>操纵提案结果，影响治理决策。</li>
+<li>降低系统的可信度，损害用户信任。</li>
+</ul>
+<hr />
+<h2 id="3-防御泛型漏洞-1"><a class="header" href="#3-防御泛型漏洞-1">3. 防御泛型漏洞</a></h2>
+<h3 id="31-使用-stdtype_name-进行类型检查-1"><a class="header" href="#31-使用-stdtype_name-进行类型检查-1">3.1 使用 <code>std::type_name</code> 进行类型检查</a></h3>
+<p>Sui Move 提供了 <code>std::type_name</code> 模块，用于在运行时检查类型的名称。开发者可以在合约中添加断言，确保泛型类型 <code>&lt;T&gt;</code> 符合预期：</p>
+<pre><code>use std::type_name;
+
+public entry fun register_voter&lt;T&gt;(ctx: &amp;mut TxContext) {
+    assert!(type_name::get&lt;T&gt;() == type_name::get&lt;votechain::OfficialToken&gt;(), 3);
+    let sender = tx_context::sender(ctx);
+    let token = VoteToken&lt;T&gt; {
+        id: object::new(ctx),
+        amount: 100,
+    };
+    public_transfer(token, sender);
+}
+</code></pre>
+<ul>
+<li><code>type_name::get&lt;T&gt;()</code> 返回 <code>&lt;T&gt;</code> 的完整类型名称（包括模块和结构体名称，如 <code>votechain::OfficialToken</code>）。</li>
+<li>断言确保 <code>&lt;T&gt;</code> 是 <code>votechain::OfficialToken</code>，否则中止交易。</li>
+<li>错误码 <code>3</code>（建议定义为常量，如 <code>const E_INVALID_TYPE: u64 = 3;</code>）便于调试。</li>
+</ul>
+<p>这种方法通过限制 <code>&lt;T&gt;</code> 到白名单类型，有效防止伪造凭证。</p>
+<h3 id="32-设计安全合约的注意事项-1"><a class="header" href="#32-设计安全合约的注意事项-1">3.2 设计安全合约的注意事项</a></h3>
+<ul>
+<li><strong>最小化泛型使用</strong>：仅在必要时使用泛型，避免过度灵活性。</li>
+<li><strong>显式验证</strong>：对所有泛型参数进行运行时检查。</li>
+<li><strong>错误处理</strong>：定义清晰的错误码，便于调试和审计。</li>
+<li><strong>测试覆盖</strong>：编写测试用例，模拟攻击者伪造类型的情景。</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="实践利用泛型漏洞伪造投票凭证"><a class="header" href="#实践利用泛型漏洞伪造投票凭证">实践：利用泛型漏洞伪造投票凭证。</a></h1>
+<h2 id="引言-2"><a class="header" href="#引言-2">引言</a></h2>
+<p>以下是一个简单的投票系统的合约，每个地址可以领取100数量的coin然后进行投票，但是存在一些漏洞问题请尝试找出问题。</p>
+<pre><code>module votechain::vote {
+    use sui::object_table::{Self, ObjectTable};
+    use sui::coin::{Self,TreasuryCap};
+    use sui::transfer::{public_transfer, share_object, public_freeze_object};
+    use std::string::String;
+    use sui::table::{Self, Table};
+
+    public struct VOTE has drop {}
+
+    public struct Votecap has key {
+        id: UID,
+        cap: TreasuryCap&lt;VOTE&gt;
+    }
+
+    public struct Mintlist has key {
+        id: UID,
+        mintlist: Table&lt;address, u64&gt;
+    }
+
+    public struct VoteToken&lt;phantom T&gt; has key, store {
+        id: UID,
+        amount: u64,
+    }
+
+    public struct VoteStore has key {
+        id: UID,
+        proposals: ObjectTable&lt;String, Proposal&gt;,
+    }
+
+    public struct Proposal has key, store {
+        id: UID,
+        votes: u64,
+    }
+
+
+    fun init(waitness: VOTE,ctx: &amp;mut TxContext) {
+        let name = std::string::utf8(b"letsctf");
+
+        let mintlist = Mintlist { id: object::new(ctx) , mintlist: table::new(ctx) };
+        let mut store = VoteStore {
+            id: object::new(ctx),
+            proposals: object_table::new(ctx),
+        };
+
+        let proposal = Proposal {
+            id: object::new(ctx),
+            votes: 0,
+        };
+
+        let (treasury_cap, meta) = coin::create_currency(waitness,6,b"VOTE", b"VOTE", b"", option::none(), ctx);
+  
+        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
+
+        object_table::add(&amp;mut store.proposals, name, proposal);
+        public_freeze_object(meta);
+        share_object(vote_cap);
+        share_object(mintlist);
+        share_object(store);
+    }
+
+    public entry fun mint(
+        vote_cap: &amp;mut Votecap,
+        mint_list: &amp;mut Mintlist,
+        ctx: &amp;mut TxContext
+    ){
+        let addr = ctx.sender();
+        assert!(!table::contains(&amp;mint_list.mintlist, addr), 1);
+        let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
+        table::add(&amp;mut mint_list.mintlist, addr, 100);
+        public_transfer(coin, addr);
+    }
+
+    public entry fun register_voter&lt;T&gt;(vote_coin: coin::Coin&lt;T&gt;, ctx: &amp;mut TxContext) {
+        let amount = vote_coin.value();
+        assert!(amount == 100,1);
+        let sender = tx_context::sender(ctx);
+        let token = VoteToken&lt;T&gt; {
+            id: object::new(ctx),
+            amount: 100,
+        };
+        public_transfer(token, sender);
+        public_transfer(vote_coin, @0x0);
+    }
+
+    public entry fun vote&lt;T&gt;(token: &amp;VoteToken&lt;T&gt;, store: &amp;mut VoteStore, proposal_name: String) {
+        assert!(token.amount &gt; 0, 1);
+        assert!(object_table::contains(&amp;store.proposals, proposal_name), 2);
+
+        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
+        proposal.votes = proposal.votes + token.amount;
+    }
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="第4章资源管理"><a class="header" href="#第4章资源管理">第4章：资源管理</a></h1>
+<h2 id="引言-3"><a class="header" href="#引言-3">引言</a></h2>
+<p>在区块链智能合约中，资源管理是确保系统安全的关键。Sui Move 使用对象（如代币、共享状态）来管理资源，通过 has key、Coin 和 share_object 提供强大的控制能力。然而，错误的资源管理可能导致漏洞，如代币重复使用。本章将介绍 Sui Move 的资源管理，以 VoteChain 投票系统为例，探讨未正确销毁投票代币的漏洞，学习如何利用和修复此类问题。</p>
+<p>通过本章，你将：</p>
+<ul>
+<li>了解 Sui Move 的对象和代币管理。</li>
+<li>掌握资源管理漏洞，如未销毁代币导致重复投票。</li>
+<li>学会在 CTF 中发现和修复资源管理问题。</li>
+</ul>
+<p>我们将分析 chapter_4::vote 中的重复投票漏洞，实践操纵投票结果，并在任务中修复代币管理。</p>
+<hr />
+<h2 id="1-sui-move-的资源管理"><a class="header" href="#1-sui-move-的资源管理">1. Sui Move 的资源管理</a></h2>
+<h3 id="11-对象与代币"><a class="header" href="#11-对象与代币">1.1 对象与代币</a></h3>
+<p>Sui Move 的资源以对象形式存储，具备唯一标识（UID）：</p>
+<ul>
+<li>对象类型：需 has key（唯一性）和 has store（可存储）。</li>
+<li>所有权：通过 public_transfer 转移，share_object 公开共享。</li>
+<li>代币：Coin<T> 表示代币，需销毁（coin::burn）或分割（coin::split）以防止重复使用。</li>
+</ul>
+<p>在 VoteChain 中：</p>
+<ul>
+<li>Coin<VOTE> 是投票代币，代表投票权。</li>
+<li>VoteStore 是共享对象，存储提案票数。</li>
+</ul>
+<h3 id="12-资源管理漏洞"><a class="header" href="#12-资源管理漏洞">1.2 资源管理漏洞</a></h3>
+<p>常见的资源管理漏洞包括：</p>
+<ul>
+<li>未销毁代币：投票后未销毁 Coin<VOTE>，允许重复使用。</li>
+<li>错误转移：对象转移到错误地址，丢失控制。</li>
+<li>共享对象滥用：未限制 share_object 的访问（第5章讨论）。</li>
+</ul>
+<p>这些漏洞可能导致投票操纵或资源滥用。</p>
+<h3 id="13-漏洞案例"><a class="header" href="#13-漏洞案例">1.3 漏洞案例</a></h3>
+<p>在 VoteChain 的 chapter_4::vote 中：</p>
+<ul>
+<li>vote 函数记录投票者，但未销毁或分割 Coin<VOTE>。</li>
+<li>攻击者可多次调用 vote，用同一代币增加票数，操纵提案结果。</li>
+<li>危害：投票系统公平性丧失。</li>
+</ul>
+<hr />
+<h2 id="2-防御资源管理漏洞"><a class="header" href="#2-防御资源管理漏洞">2. 防御资源管理漏洞</a></h2>
+<h3 id="21-销毁或分割代币"><a class="header" href="#21-销毁或分割代币">2.1 销毁或分割代币</a></h3>
+<ul>
+<li>在 vote 中销毁 Coin<VOTE>（coin::burn）或分割已用部分（coin::split）。</li>
+<li>示例：coin::burn(vote_coin);</li>
+</ul>
+<h3 id="22-验证状态"><a class="header" href="#22-验证状态">2.2 验证状态</a></h3>
+<ul>
+<li>检查代币是否有效（如 vote_coin.value() &gt; 0）。</li>
+<li>记录投票状态（如 voters 列表），防止重复投票。</li>
+</ul>
+<h3 id="23-最小化共享对象"><a class="header" href="#23-最小化共享对象">2.3 最小化共享对象</a></h3>
+<ul>
+<li>减少 share_object 的敏感数据，仅存储必要信息（如票数）。</li>
+<li>使用用户拥有的对象（如代币）管理权限。</li>
+</ul>
+<hr />
+<div style="break-before: page; page-break-before: always;"></div><h1 id="了解资源管理问题"><a class="header" href="#了解资源管理问题">了解资源管理问题</a></h1>
+<h2 id="引言-4"><a class="header" href="#引言-4">引言</a></h2>
+<p>在区块链智能合约中，资源管理是确保系统安全的关键。Sui Move 使用对象（如代币、共享状态）来管理资源，通过 has key、Coin 和 share_object 提供强大的控制能力。然而，错误的资源管理可能导致漏洞，如代币重复使用。本章将介绍 Sui Move 的资源管理，以 VoteChain 投票系统为例，探讨未正确销毁投票代币的漏洞，学习如何利用和修复此类问题。</p>
+<p>通过本章，你将：</p>
+<ul>
+<li>了解 Sui Move 的对象和代币管理。</li>
+<li>掌握资源管理漏洞，如未销毁代币导致重复投票。</li>
+<li>学会在 CTF 中发现和修复资源管理问题。</li>
+</ul>
+<p>我们将分析 chapter_4::vote 中的重复投票漏洞，实践操纵投票结果，并在任务中修复代币管理。</p>
+<hr />
+<h2 id="1-sui-move-的资源管理-1"><a class="header" href="#1-sui-move-的资源管理-1">1. Sui Move 的资源管理</a></h2>
+<h3 id="11-对象与代币-1"><a class="header" href="#11-对象与代币-1">1.1 对象与代币</a></h3>
+<p>Sui Move 的资源以对象形式存储，具备唯一标识（UID）：</p>
+<ul>
+<li>对象类型：需 has key（唯一性）和 has store（可存储）。</li>
+<li>所有权：通过 public_transfer 转移，share_object 公开共享。</li>
+<li>代币：Coin<T> 表示代币，需销毁（coin::burn）或分割（coin::split）以防止重复使用。</li>
+</ul>
+<p>在 VoteChain 中：</p>
+<ul>
+<li>Coin<VOTE> 是投票代币，代表投票权。</li>
+<li>VoteStore 是共享对象，存储提案票数。</li>
+</ul>
+<h3 id="12-资源管理漏洞-1"><a class="header" href="#12-资源管理漏洞-1">1.2 资源管理漏洞</a></h3>
+<p>常见的资源管理漏洞包括：</p>
+<ul>
+<li>未销毁代币：投票后未销毁 Coin<VOTE>，允许重复使用。</li>
+<li>错误转移：对象转移到错误地址，丢失控制。</li>
+<li>共享对象滥用：未限制 share_object 的访问（第5章讨论）。</li>
+</ul>
+<p>这些漏洞可能导致投票操纵或资源滥用。</p>
+<h3 id="13-漏洞案例-1"><a class="header" href="#13-漏洞案例-1">1.3 漏洞案例</a></h3>
+<p>在 VoteChain 的 chapter_4::vote 中：</p>
+<ul>
+<li>vote 函数记录投票者，但未销毁或分割 Coin<VOTE>。</li>
+<li>攻击者可多次调用 vote，用同一代币增加票数，操纵提案结果。</li>
+<li>危害：投票系统公平性丧失。</li>
+</ul>
+<hr />
+<h2 id="2-防御资源管理漏洞-1"><a class="header" href="#2-防御资源管理漏洞-1">2. 防御资源管理漏洞</a></h2>
+<h3 id="21-销毁或分割代币-1"><a class="header" href="#21-销毁或分割代币-1">2.1 销毁或分割代币</a></h3>
+<ul>
+<li>在 vote 中销毁 Coin<VOTE>（coin::burn）或分割已用部分（coin::split）。</li>
+<li>示例：coin::burn(vote_coin);</li>
+</ul>
+<h3 id="22-验证状态-1"><a class="header" href="#22-验证状态-1">2.2 验证状态</a></h3>
+<ul>
+<li>检查代币是否有效（如 vote_coin.value() &gt; 0）。</li>
+<li>记录投票状态（如 voters 列表），防止重复投票。</li>
+</ul>
+<h3 id="23-最小化共享对象-1"><a class="header" href="#23-最小化共享对象-1">2.3 最小化共享对象</a></h3>
+<ul>
+<li>减少 share_object 的敏感数据，仅存储必要信息（如票数）。</li>
+<li>使用用户拥有的对象（如代币）管理权限。</li>
+</ul>
+<hr />
+<div style="break-before: page; page-break-before: always;"></div><h1 id="实践分析利用资源管理漏洞"><a class="header" href="#实践分析利用资源管理漏洞">实践：分析利用资源管理漏洞</a></h1>
+<pre><code>module chapter_4::vote {
+    use sui::coin::{Self, Coin, TreasuryCap};
+    use sui::transfer::{public_transfer, share_object, public_freeze_object};
+    use sui::vec_map::{Self, VecMap};
+    use sui::object_table::{Self, ObjectTable};
     use std::string::String;
 
-    const E_WRONG_STAGE: u64 = 1;
-    const E_COOLDOWN: u64 = 2;
-    const E_MAX_ATTEMPTS_EXCEEDED: u64 = 3;
+    public struct VOTE has drop {}
 
-    public struct Challenge has key {
+    public struct Votecap has key {
         id: UID,
-        owner: address,
-        secret_hash: vector&lt;u8&gt;,
-        attempts: u64,
-        max_attempts: u64,
-        last_attempt_time: u64,
-        is_solved: bool,
-        stage: u64,
-        target_score: u64,
-        current_score: u64,
-        bonus_multiplier: u64,
-        guess_round: u64,
-        round_hash: vector&lt;u8&gt;,
-        seed: u64,
+        cap: TreasuryCap&lt;VOTE&gt;,
     }
 
-    public struct FlagEvent has copy, drop {
-        flag: vector&lt;u8&gt;,
-        github_id: String
+    public struct Mintlist has key {
+        id: UID,
+        mintlist: VecMap&lt;address, u64&gt;,
     }
 
-    public struct ScoreEvent has copy, drop {
-        score: u64,
+    public struct VoteStore has key {
+        id: UID,
+        proposals: ObjectTable&lt;String, Proposal&gt;,
+        voters: VecMap&lt;address, bool&gt;, 
     }
 
-    fun init(ctx: &amp;mut TxContext) {
-        let secret = b"LetsMoveCTF";
-        let secret_hash = hash::sha3_256(secret);
-        let challenge = Challenge {
+    public struct Proposal has key, store {
+        id: UID,
+        votes: u64,
+    }
+
+    const E_INVALID_AMOUNT: u64 = 1;
+    const E_INVALID_PROPOSAL: u64 = 2;
+    const E_ALREADY_MINTED: u64 = 3;
+
+    fun init(witness: VOTE, ctx: &amp;mut TxContext) {
+        let name = std::string::utf8(b"letsctf");
+        let (treasury_cap, meta) = coin::create_currency(
+            witness,
+            6,
+            b"VOTE",
+            b"VOTE",
+            b"",
+            option::none(),
+            ctx
+        );
+
+        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
+        let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty() };
+        let mut store = VoteStore {
             id: object::new(ctx),
-            owner: tx_context::sender(ctx),
-            secret_hash: secret_hash,
-            attempts: 0,
-            max_attempts: 50,
-            last_attempt_time: 0,
-            is_solved: false,
-            stage: 1,
-            target_score: 100,
-            current_score: 0,
-            bonus_multiplier: 0,
-            guess_round: 1,
-            round_hash: secret_hash,
-            seed: 0,
+            proposals: object_table::new(ctx),
+            voters: vec_map::empty(),
         };
-        transfer::share_object(challenge);
+
+        let proposal = Proposal {
+            id: object::new(ctx),
+            votes: 0,
+        };
+
+        object_table::add(&amp;mut store.proposals, name, proposal);
+        public_freeze_object(meta);
+        share_object(vote_cap);
+        share_object(mintlist);
+        share_object(store);
     }
 
-    public entry fun submit_score(challenge: &amp;mut Challenge, score: u64, clock: &amp;Clock) {
-        assert!(challenge.stage == 1, E_WRONG_STAGE);
-        let current_time = clock::timestamp_ms(clock);
-        assert!(current_time &gt;= challenge.last_attempt_time + 5000, E_COOLDOWN);
-        challenge.attempts = challenge.attempts + 1;
-        assert!(challenge.attempts &lt; challenge.max_attempts, E_MAX_ATTEMPTS_EXCEEDED);
-        let time_factor = (current_time - challenge.last_attempt_time) / 1000;
-        let attempt_penalty = challenge.attempts * 2;
-        let adjusted_score = if (score &gt; attempt_penalty) {
-            score - attempt_penalty
-        } else {
-            0
-        };
-        let final_score = adjusted_score * challenge.bonus_multiplier + time_factor;
-        challenge.current_score = challenge.current_score + final_score;
-        challenge.last_attempt_time = current_time;
-        event::emit(ScoreEvent { score: challenge.current_score });
-        if (challenge.current_score &gt;= challenge.target_score) {
-            challenge.stage = 2;
-            challenge.attempts = 0;
-        };
+    public entry fun mint(
+        vote_cap: &amp;mut Votecap,
+        mint_list: &amp;mut Mintlist,
+        ctx: &amp;mut TxContext
+    ) {
+        let addr = tx_context::sender(ctx);
+        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr), E_ALREADY_MINTED);
+        let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
+        vec_map::insert(&amp;mut mint_list.mintlist, addr, 100);
+        public_transfer(coin, addr);
     }
 
-    #[allow(lint(public_random))]
-    public entry fun submit_guess(challenge: &amp;mut Challenge, randomseed: &amp;Random, guess: vector&lt;u8&gt;, clock: &amp;Clock, ctx: &amp;mut TxContext) {
-        assert!(challenge.stage == 2, E_WRONG_STAGE);
-        let mut random_gen = new_generator(randomseed, ctx);
-        let seed = generate_u64(&amp;mut random_gen);
-        let current_time = clock::timestamp_ms(clock);
-        assert!(current_time &gt;= challenge.last_attempt_time + 5000, E_COOLDOWN);
-        assert!(challenge.attempts &lt; challenge.max_attempts, E_MAX_ATTEMPTS_EXCEEDED);
-        challenge.attempts = challenge.attempts + 1;
-        let mut guess_data = guess;
-        vector::append(&amp;mut guess_data, to_bytes(current_time));
-        vector::append(&amp;mut guess_data, to_bytes(challenge.attempts));
-        let random = hash::sha3_256(guess_data);
-        let prefix_length = challenge.guess_round * 2;
-        if (compare_hash_prefix(&amp;random, &amp;challenge.round_hash, prefix_length)) {
-            challenge.guess_round = challenge.guess_round + 1;
-            let mut new_hash_data = random;
-            vector::append(&amp;mut new_hash_data, to_bytes(challenge.seed + challenge.guess_round));
-            challenge.round_hash = hash::sha3_256(new_hash_data);
-            challenge.seed = seed;
-            if (challenge.guess_round &gt; 3) {
-                challenge.is_solved = true;
-                challenge.stage = 3;
-                challenge.guess_round = 1;
-                challenge.attempts = 0;
-            };
+    public entry fun vote(
+        store: &amp;mut VoteStore,
+        vote_coin: &amp;Coin&lt;VOTE&gt;,
+        proposal_name: String,
+        ctx: &amp;mut TxContext
+    ) {
+        assert!(vote_coin.value() &gt; 0, E_INVALID_AMOUNT);
+        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
+        let sender = tx_context::sender(ctx);
+        if (!vec_map::contains(&amp;store.voters, &amp;sender)) {
+            vec_map::insert(&amp;mut store.voters, sender, true);
         };
-        challenge.last_attempt_time = current_time;
-    }
-
-    public entry fun get_flag(challenge: &amp;mut Challenge,github_id: String, _: &amp;mut TxContext) {
-        assert!(challenge.stage == 3 &amp;&amp; challenge.is_solved, E_WRONG_STAGE);
-        reset_challenge(challenge);
-        event::emit(FlagEvent { flag: b"flag{LetsMoveCTF_chapter_2}" ,github_id});
-    }
-
-    public fun reset_challenge(challenge: &amp;mut Challenge) {
-        challenge.attempts = 0;
-        challenge.last_attempt_time = 0;
-        challenge.is_solved = false;
-        challenge.stage = 1;
-        challenge.current_score = 0;
-        challenge.bonus_multiplier = 1;
-        challenge.guess_round = 1;
-        challenge.round_hash = challenge.secret_hash;
-    }
-
-    fun to_bytes(value: u64): vector&lt;u8&gt; {
-        let mut bytes = vector::empty&lt;u8&gt;();
-        let mut i = 0;
-        while (i &lt; 8) {
-            vector::push_back(&amp;mut bytes, ((value &gt;&gt; (i * 8)) &amp; 0xFF as u8));
-            i = i + 1;
-        };
-        bytes
-    }
-
-    fun compare_hash_prefix(hash1: &amp;vector&lt;u8&gt;, hash2: &amp;vector&lt;u8&gt;, n: u64): bool {
-        if (vector::length(hash1) &lt; n || vector::length(hash2) &lt; n) {
-            return false
-        };
-        let mut i = 0;
-        while (i &lt; n) {
-            if (*vector::borrow(hash1, i) != *vector::borrow(hash2, i)) {
-                return false
-            };
-            i = i + 1;
-        };
-        true
+        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
+        proposal.votes = proposal.votes + vote_coin.value();
     }
 }
 </code></pre>

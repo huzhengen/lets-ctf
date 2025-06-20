@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Task 1 - lets move ctf</title>
+        <title>实践：利用泛型漏洞伪造投票凭证 - lets move ctf</title>
 
 
         <!-- Custom HTML head -->
@@ -155,94 +155,99 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="task1"><a class="header" href="#task1">Task1</a></h1>
-<h2 id="任务代码"><a class="header" href="#任务代码">任务代码</a></h2>
-<p>以下是待分析的 Move 合约，完整代码请查看 <a href="https://github.com/hoh-zone/lets-ctf/tree/main/src/ctfbook/chapter_1/task1">挑战合约</a>：</p>
-<pre><code>PackageID: 0xcd6050b4e93c5bdc7149f2bf0b69202ec297bf1532d500e896dbefcd15d811f4 
-Challenge ObjectID: 0xf5dc0a1701384ff0ff6697ae9de37ee0cc832ff1fd511232aca7d0fff282d026
-</code></pre>
-<pre><code class="language-move">module task1::task1 {
-    use std::bcs;
-    use std::hash::sha3_256;
-    use std::string::{Self, String};
-    use sui::event;
-    use sui::random::{Self, Random};
-    use sui::transfer::share_object;
+                        <h1 id="实践利用泛型漏洞伪造投票凭证"><a class="header" href="#实践利用泛型漏洞伪造投票凭证">实践：利用泛型漏洞伪造投票凭证。</a></h1>
+<h2 id="引言"><a class="header" href="#引言">引言</a></h2>
+<p>以下是一个简单的投票系统的合约，每个地址可以领取100数量的coin然后进行投票，但是存在一些漏洞问题请尝试找出问题。</p>
+<pre><code>module votechain::vote {
+    use sui::object_table::{Self, ObjectTable};
+    use sui::coin::{Self,TreasuryCap};
+    use sui::transfer::{public_transfer, share_object, public_freeze_object};
+    use std::string::String;
+    use sui::table::{Self, Table};
 
-    const EINVALID_HASH: u64 = 0;
-    const EINVALID_MAGIC: u64 = 1;
-    const EINVALID_SEED: u64 = 2;
+    public struct VOTE has drop {}
 
-    public struct FlagEvent has copy, drop {
-        sender: address,
-        flag: String,
-        attempt_count: u64,
-        github_id: String,
-        success: bool
-    }
-
-    public struct Challenge has key {
+    public struct Votecap has key {
         id: UID,
-        secret: String,
-        attempt_count: u64,
-        last_seed: u64
+        cap: TreasuryCap&lt;VOTE&gt;
     }
 
-    fun init(ctx: &amp;mut TxContext) {
-        let challenge = Challenge {
+    public struct Mintlist has key {
+        id: UID,
+        mintlist: Table&lt;address, u64&gt;
+    }
+
+    public struct VoteToken&lt;phantom T&gt; has key, store {
+        id: UID,
+        amount: u64,
+    }
+
+    public struct VoteStore has key {
+        id: UID,
+        proposals: ObjectTable&lt;String, Proposal&gt;,
+    }
+
+    public struct Proposal has key, store {
+        id: UID,
+        votes: u64,
+    }
+
+
+    fun init(waitness: VOTE,ctx: &amp;mut TxContext) {
+        let name = std::string::utf8(b"letsctf");
+
+        let mintlist = Mintlist { id: object::new(ctx) , mintlist: table::new(ctx) };
+        let mut store = VoteStore {
             id: object::new(ctx),
-            secret: string::utf8(b"MoveCTF_task1"),
-            attempt_count: 0,
-            last_seed: 0
+            proposals: object_table::new(ctx),
         };
-        share_object(challenge);
+
+        let proposal = Proposal {
+            id: object::new(ctx),
+            votes: 0,
+        };
+
+        let (treasury_cap, meta) = coin::create_currency(waitness,6,b"VOTE", b"VOTE", b"", option::none(), ctx);
+  
+        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
+
+        object_table::add(&amp;mut store.proposals, name, proposal);
+        public_freeze_object(meta);
+        share_object(vote_cap);
+        share_object(mintlist);
+        share_object(store);
     }
 
-    public entry fun get_flag(
-        hash_input: vector&lt;u8&gt;,
-        github_id: String,
-        magic_number: u64,
-        seed: u64,
-        challenge: &amp;mut Challenge,
-        rand: &amp;Random,
+    public entry fun mint(
+        vote_cap: &amp;mut Votecap,
+        mint_list: &amp;mut Mintlist,
         ctx: &amp;mut TxContext
-    ) {
-        let mut bcs_input = bcs::to_bytes(&amp;challenge.secret);
-        vector::append(&amp;mut bcs_input, *github_id.as_bytes());
-        let expected_hash = sha3_256(bcs_input);
-        assert!(hash_input == expected_hash, EINVALID_HASH);
-
-        challenge.attempt_count = challenge.attempt_count + 1;
-
-        let expected_magic = (challenge.attempt_count * challenge.attempt_count + challenge.last_seed) % 1000 + seed;
-        assert!(magic_number == expected_magic, EINVALID_MAGIC);
-
-        let secret_bytes = *string::as_bytes(&amp;challenge.secret);
-        let secret_len = vector::length(&amp;secret_bytes);
-        assert!(seed == secret_len * 2, EINVALID_SEED);
-
-        challenge.secret = getRandomString(rand, ctx);
-        challenge.last_seed = seed;
-
-        event::emit(FlagEvent {
-            sender: tx_context::sender(ctx),
-            flag: string::utf8(b"CTF{MoveCTF-Task1}"),
-            github_id,
-            attempt_count: challenge.attempt_count,
-            success: true
-        });
+    ){
+        let addr = ctx.sender();
+        assert!(!table::contains(&amp;mint_list.mintlist, addr), 1);
+        let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
+        table::add(&amp;mut mint_list.mintlist, addr, 100);
+        public_transfer(coin, addr);
     }
 
-    fun getRandomString(rand: &amp;Random, ctx: &amp;mut TxContext): String {
-        let mut gen = random::new_generator(rand, ctx);
-        let mut str_len = random::generate_u8_in_range(&amp;mut gen, 4, 32);
-        let mut rand_vec: vector&lt;u8&gt; = b"";
-        while (str_len != 0) {
-            let rand_num = random::generate_u8_in_range(&amp;mut gen, 34, 126);
-            vector::push_back(&amp;mut rand_vec, rand_num);
-            str_len = str_len - 1;
+    public entry fun register_voter&lt;T&gt;(vote_coin: coin::Coin&lt;T&gt;, ctx: &amp;mut TxContext) {
+        let amount = vote_coin.value();
+        assert!(amount == 100,1);
+        let sender = tx_context::sender(ctx);
+        let token = VoteToken&lt;T&gt; {
+            id: object::new(ctx),
+            amount: 100,
         };
-        string::utf8(rand_vec)
+        public_transfer(token, sender);
+        public_transfer(vote_coin, @0x0);
+    }
+
+    public entry fun vote&lt;T&gt;(token: &amp;VoteToken&lt;T&gt;, store: &amp;mut VoteStore, proposal_name: String) {
+        assert!(token.amount &gt; 0, 1);
+        assert!(object_table::contains(&amp;store.proposals, proposal_name), 2);
+
+        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
+        proposal.votes = proposal.votes + token.amount;
     }
 }
 </code></pre>
@@ -251,11 +256,11 @@ Challenge ObjectID: 0xf5dc0a1701384ff0ff6697ae9de37ee0cc832ff1fd511232aca7d0fff2
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../ctfbook/chapter_1/practice.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../ctfbook/chapter_3/type_safety.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../ctfbook/chapter_2/index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../ctfbook/chapter_4/intro.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -265,11 +270,11 @@ Challenge ObjectID: 0xf5dc0a1701384ff0ff6697ae9de37ee0cc832ff1fd511232aca7d0fff2
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../ctfbook/chapter_1/practice.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../ctfbook/chapter_3/type_safety.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../ctfbook/chapter_2/index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../ctfbook/chapter_4/intro.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
