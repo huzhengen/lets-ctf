@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>实践：资源管理不当分析 - lets move ctf</title>
+        <title>第6节：逻辑漏洞与状态管理 - lets move ctf</title>
 
 
         <!-- Custom HTML head -->
@@ -155,112 +155,17 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="实践分析利用资源管理漏洞"><a class="header" href="#实践分析利用资源管理漏洞">实践：分析利用资源管理漏洞</a></h1>
-<pre><code>module chapter_4::vote {
-    use sui::coin::{Self, Coin, TreasuryCap};
-    use sui::transfer::{public_transfer, share_object, public_freeze_object};
-    use sui::vec_map::{Self, VecMap};
-    use sui::object_table::{Self, ObjectTable};
-    use std::string::String;
-
-    public struct VOTE has drop {}
-
-    public struct Votecap has key {
-        id: UID,
-        cap: TreasuryCap&lt;VOTE&gt;,
-    }
-
-    public struct Mintlist has key {
-        id: UID,
-        mintlist: VecMap&lt;address, u64&gt;,
-    }
-
-    public struct VoteStore has key {
-        id: UID,
-        proposals: ObjectTable&lt;String, Proposal&gt;,
-        voters: VecMap&lt;address, bool&gt;, 
-    }
-
-    public struct Proposal has key, store {
-        id: UID,
-        votes: u64,
-    }
-
-    const E_INVALID_AMOUNT: u64 = 1;
-    const E_INVALID_PROPOSAL: u64 = 2;
-    const E_ALREADY_MINTED: u64 = 3;
-
-    fun init(witness: VOTE, ctx: &amp;mut TxContext) {
-        let name = std::string::utf8(b"letsctf");
-        let (treasury_cap, meta) = coin::create_currency(
-            witness,
-            6,
-            b"VOTE",
-            b"VOTE",
-            b"",
-            option::none(),
-            ctx
-        );
-
-        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
-        let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty() };
-        let mut store = VoteStore {
-            id: object::new(ctx),
-            proposals: object_table::new(ctx),
-            voters: vec_map::empty(),
-        };
-
-        let proposal = Proposal {
-            id: object::new(ctx),
-            votes: 0,
-        };
-
-        object_table::add(&amp;mut store.proposals, name, proposal);
-        public_freeze_object(meta);
-        share_object(vote_cap);
-        share_object(mintlist);
-        share_object(store);
-    }
-
-    public entry fun mint(
-        vote_cap: &amp;mut Votecap,
-        mint_list: &amp;mut Mintlist,
-        ctx: &amp;mut TxContext
-    ) {
-        let addr = tx_context::sender(ctx);
-        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr), E_ALREADY_MINTED);
-        let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
-        vec_map::insert(&amp;mut mint_list.mintlist, addr, 100);
-        public_transfer(coin, addr);
-    }
-
-    public entry fun vote(
-        store: &amp;mut VoteStore,
-        vote_coin: &amp;Coin&lt;VOTE&gt;,
-        proposal_name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(vote_coin.value() &gt; 0, E_INVALID_AMOUNT);
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let sender = tx_context::sender(ctx);
-        if (!vec_map::contains(&amp;store.voters, &amp;sender)) {
-            vec_map::insert(&amp;mut store.voters, sender, true);
-        };
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
-        proposal.votes = proposal.votes + vote_coin.value();
-    }
-}
-</code></pre>
+                        <h1 id="第6节高级move特性"><a class="header" href="#第6节高级move特性">第6节：高级Move特性</a></h1>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../ctfbook/chapter_4/global_storage.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../ctfbook/chapter_5/practice.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../ctfbook/chapter_5/intro.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../ctfbook/chapter_6/state_management.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -270,11 +175,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../ctfbook/chapter_4/global_storage.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../ctfbook/chapter_5/practice.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../ctfbook/chapter_5/intro.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../ctfbook/chapter_6/state_management.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
