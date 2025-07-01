@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>实践：分析状态管理逻辑漏洞 - lets move ctf</title>
+        <title>跨合约安全与溢出漏洞 - lets move ctf</title>
 
 
         <!-- Custom HTML head -->
@@ -155,142 +155,98 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="实践分析状态管理逻辑漏洞"><a class="header" href="#实践分析状态管理逻辑漏洞">实践：分析状态管理逻辑漏洞</a></h1>
-<pre><code>module chapter_6::vote {
-    use sui::coin::{Self, Coin, TreasuryCap};
-    use sui::transfer::{public_transfer, share_object, public_freeze_object};
-    use sui::vec_map::{Self, VecMap};
-    use sui::object_table::{Self, ObjectTable};
-    use std::string::String;
-    use sui::balance::Balance;
-
-    public struct VOTE has drop {}
-
-    public struct Votecap has key {
-        id: UID,
-        cap: TreasuryCap&lt;VOTE&gt;,
-    }
-
-    public struct Mintlist has key {
-        id: UID,
-        mintlist: VecMap&lt;address, u64&gt;,
-    }
-
-    public struct VoteStore has key {
-        id: UID,
-        proposals: ObjectTable&lt;String, Proposal&gt;,
-        voters: VecMap&lt;address, u64&gt;,
-    }
-
-    public struct Proposal has key, store {
-        id: UID,
-        owner: address,
-        votes: u64,
-        locked_tokens: Balance&lt;VOTE&gt;,
-        closed: bool,
-    }
-
-    const E_INVALID_AMOUNT: u64 = 1;
-    const E_INVALID_PROPOSAL: u64 = 2;
-    const E_ALREADY_MINTED: u64 = 3;
-    const E_UNAUTHORIZED: u64 = 4;
-    const E_PROPOSAL_CLOSED: u64 = 5;
-
-    fun init(witness: VOTE, ctx: &amp;mut TxContext) {
-        let (treasury_cap, meta) = coin::create_currency(
-            witness, 6, b"VOTE", b"VOTE", b"", option::none(), ctx
-        );
-
-        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
-        let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty() };
-        let store = VoteStore {
-            id: object::new(ctx),
-            proposals: object_table::new(ctx),
-            voters: vec_map::empty(),
-        };
-
-
-        public_freeze_object(meta);
-        share_object(vote_cap);
-        share_object(mintlist);
-        share_object(store);
-    }
-
-    public entry fun mint(
-        vote_cap: &amp;mut Votecap,
-        mint_list: &amp;mut Mintlist,
-        ctx: &amp;mut TxContext
-    ) {
-        let addr = tx_context::sender(ctx);
-        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr), E_ALREADY_MINTED);
-        let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
-        vec_map::insert(&amp;mut mint_list.mintlist, addr, 100);
-        public_transfer(coin, addr);
-    }
-
-    public entry fun create_proposal(
-        store: &amp;mut VoteStore,
-        name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(!object_table::contains(&amp;store.proposals, name), E_INVALID_PROPOSAL);
-        let proposal = Proposal {
-            id: object::new(ctx),
-            owner: tx_context::sender(ctx),
-            votes: 0,
-            locked_tokens: zero&lt;VOTE&gt;(),
-            closed: false,
-        };
-        object_table::add(&amp;mut store.proposals, name, proposal);
-    }
-
-    public entry fun vote(
-        store: &amp;mut VoteStore,
-        vote_coin: Coin&lt;VOTE&gt;,
-        proposal_name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(vote_coin.value() &gt; 0, E_INVALID_AMOUNT);
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
-        let sender = tx_context::sender(ctx);
-        let amount = coin::into_balance(vote_coin);
-        if (vec_map::contains(&amp;store.voters, &amp;sender)) {
-            let voter_amount = vec_map::get_mut(&amp;mut store.voters, &amp;sender);
-            *voter_amount = *voter_amount + amount.value();
-        } else {
-            vec_map::insert(&amp;mut store.voters, sender, amount.value());
-        };
-        proposal.votes = proposal.votes + amount.value();
-        proposal.locked_tokens.join(amount);
-    }
-
-    public entry fun close_proposal(
-        store: &amp;mut VoteStore,
-        proposal_name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
-        let sender = tx_context::sender(ctx);
-        assert!(sender == proposal.owner, E_UNAUTHORIZED);
-        assert!(!proposal.closed, E_PROPOSAL_CLOSED);
-        proposal.closed = true;
-        let coin = coin::from_balance(proposal.locked_tokens.withdraw_all(), ctx);
-        public_transfer(coin, sender);
-    }
-}
-</code></pre>
+                        <h3 id="跨合约安全与溢出漏洞"><a class="header" href="#跨合约安全与溢出漏洞">跨合约安全与溢出漏洞</a></h3>
+<h4 id="1-课程概述"><a class="header" href="#1-课程概述">1. 课程概述</a></h4>
+<p>欢迎来到第 7 章！本章将深入探讨区块链智能合约中的“跨合约安全”问题，重点关注多个合约之间的交互如何引入漏洞。我们设计了一个投票系统（<code>vote::vote</code>）、一个数学工具模块（<code>math::math_utils</code>）和一个标志存储库（<code>vote::flag_vault</code>），并提供了一个求解脚本（<code>solve_chapter_7::solve_chapter_7</code>）作为参考。你的目标是通过累积 <code>VOTE</code> 代币、利用溢出漏洞触发权限，并获取隐藏的 <code>FLAG{CTF{Letsctf_chapter_7}}</code>。</p>
+<h4 id="2-系统架构"><a class="header" href="#2-系统架构">2. 系统架构</a></h4>
+<ul>
+<li>
+<p><strong>投票系统 (<code>vote::vote</code>)</strong>：</p>
+<ul>
+<li>初始化时创建 <code>VotingSystem</code>、<code>Votecap</code> 和 <code>Mintlist</code>，分配 10,000 <code>VOTE</code> 作为初始余额。</li>
+<li><code>mint</code> 函数允许每个地址首次铸造 100 <code>VOTE</code>，限制重复铸造。</li>
+<li><code>vote</code> 函数累积用户的投票金额（<code>vote_list</code>），通过 <code>math_utils::calculate_weight</code> 计算权重，权重超过 1,000,000 时授权。</li>
+<li><code>withdraw</code> 函数允许提取累积的 <code>VOTE</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>数学工具 (<code>math::math_utils</code>)</strong>：</p>
+<ul>
+<li><code>calculate_weight</code> 函数检查输入是否超过 <code>mask = 0xff &lt;&lt; 1</code> ，若超过返回 <code>999999999</code>，否则返回输入值。</li>
+</ul>
+</li>
+<li>
+<p><strong>标志存储库 (<code>vote::flag_vault</code>)</strong>：</p>
+<ul>
+<li><code>get_flag</code> 函数检查 <code>VotingSystem</code> 的 <code>is_authorized</code> 状态，授权后触发 <code>FlagEvent</code>。</li>
+</ul>
+</li>
+</ul>
+<h4 id="3-漏洞与挑战"><a class="header" href="#3-漏洞与挑战">3. 漏洞与挑战</a></h4>
+<p>本章设计了跨合约安全漏洞，供你探索和利用：</p>
+<ul>
+<li><strong>有限铸造限制</strong>：<code>mint</code> 限制每个地址一次 100 <code>VOTE</code>，但通过 <code>withdraw</code> 和重复投票可累积。</li>
+<li><strong>溢出漏洞</strong>：<code>math_utils::calculate_weight</code> 的阈值 <code>510</code> 未有效限制大输入，累积 <code>amount &gt; 510</code> 可返回 <code>999999999 &gt; 1000000</code>，触发授权。</li>
+<li><strong>跨合约信任</strong>：<code>vote</code> 依赖 <code>math_utils</code> 的计算，但未验证权重合理性，导致权限误判。</li>
+<li><strong>目标</strong>：累积足够 <code>VOTE</code>（至少 800），触发溢出，获取 <code>FLAG{CTF{Letsctf_chapter_7}}</code>。</li>
+</ul>
+<h4 id="4-学习目标"><a class="header" href="#4-学习目标">4. 学习目标</a></h4>
+<ul>
+<li>理解跨合约交互中的信任边界问题。</li>
+<li>掌握溢出漏洞的检测和利用技术。</li>
+<li>学习状态操纵（<code>withdraw</code> 和重复投票）绕过限制。</li>
+<li>实践 CTF 挑战，分析和修复智能合约漏洞。</li>
+</ul>
+<h4 id="5-实践指南"><a class="header" href="#5-实践指南">5. 实践指南</a></h4>
+<ol>
+<li>
+<p><strong>初始化</strong>：</p>
+<ul>
+<li>调用 <code>vote::vote::mint</code> 获取 100 <code>VOTE</code>。</li>
+<li>注意：<code>mint</code> 仅对新地址生效。</li>
+</ul>
+</li>
+<li>
+<p><strong>累积代币</strong>：</p>
+<ul>
+<li>使用 <code>vote::vote::vote</code> 将 100 <code>VOTE</code> 加入 <code>vote_list</code>。</li>
+<li>调用 <code>vote::vote::withdraw</code> 提取当前 <code>vote_list</code> 值（100）。</li>
+<li>重复 <code>vote</code> 和 <code>withdraw</code>，每次金额翻倍（200, 400, 800...）。</li>
+<li>目标：累积 <code>amount &gt; 510</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>触发漏洞</strong>：</p>
+<ul>
+<li>当 <code>total_amount &gt; 510</code>，<code>math_utils::calculate_weight</code> 返回 <code>999999999 &gt; 1000000</code>，设置 <code>is_authorized = true</code>。</li>
+<li>参考 <code>solve_chapter_7::solve_chapter_7</code> 实现：
+<ul>
+<li><code>mint</code> 获取 100 <code>VOTE</code>。</li>
+<li><code>vote</code> 第一次，<code>vote_list = 100</code>。</li>
+<li><code>withdraw</code> 提取 100，<code>vote</code> 第二次，<code>vote_list = 200</code>。</li>
+<li><code>withdraw</code> 提取 200，<code>vote</code> 第三次，<code>vote_list = 400</code>。</li>
+<li><code>withdraw</code> 提取 400，<code>vote</code> 第四次，<code>vote_list = 800 &gt; 510</code>。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>获取 FLAG</strong>：</p>
+<ul>
+<li>调用 <code>vote::flag_vault::get_flag</code>，捕获 <code>FlagEvent</code>。</li>
+</ul>
+</li>
+</ol>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../ctfbook/chapter_6/state_management.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../ctfbook/chapter_7/intro.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../ctfbook/chapter_7/intro.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../ctfbook/chapter_7/practice.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -300,11 +256,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../ctfbook/chapter_6/state_management.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../ctfbook/chapter_7/intro.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../ctfbook/chapter_7/intro.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../ctfbook/chapter_7/practice.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

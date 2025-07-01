@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>实践：分析状态管理逻辑漏洞 - lets move ctf</title>
+        <title>实践：攻破综合漏洞 - lets move ctf</title>
 
 
         <!-- Custom HTML head -->
@@ -155,14 +155,155 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="实践分析状态管理逻辑漏洞"><a class="header" href="#实践分析状态管理逻辑漏洞">实践：分析状态管理逻辑漏洞</a></h1>
-<pre><code>module chapter_6::vote {
+                        <h1 id="实践多步骤综合挑战"><a class="header" href="#实践多步骤综合挑战">实践：多步骤综合挑战</a></h1>
+<h2 id="示例合约"><a class="header" href="#示例合约">示例合约</a></h2>
+<p><code>chapter_8::auth</code> 代码</p>
+<pre><code>module chapter_8::auth {
+    use sui::transfer::{share_object};
+    use sui::balance::{Self, Balance};
+    use sui::coin::{Self, Coin};
+    use chapter_8::vote::{VOTE, VotingSystem, is_authorized as vote_authorized};
+    use std::type_name::{Self, TypeName};
+    use sui::transfer::public_transfer;
+
+    public struct Credential&lt;phantom T&gt; has key, store {
+        id: UID,
+        verified: bool,
+        fee_paid: Balance&lt;T&gt;,
+        coin_type: TypeName,
+    }
+
+    public struct Auth has key {
+        id: UID,
+        authorized: bool,
+        admin: address,
+        min_fee: u64,
+        vote_dependency: Option&lt;address&gt;,
+        valid_coin_type: TypeName,
+    }
+
+    fun init(ctx: &amp;mut TxContext) {
+        let auth = Auth {
+            id: object::new(ctx),
+            admin: ctx.sender(),
+            authorized: false,
+            min_fee: 50,
+            vote_dependency: option::none(),
+            valid_coin_type: type_name::get&lt;Coin&lt;VOTE&gt;&gt;(),
+        };
+        share_object(auth);
+    }
+
+    public fun register&lt;T&gt;(
+        auth: &amp;mut Auth,
+        payment: Coin&lt;T&gt;,
+        vote_system: &amp;mut VotingSystem,
+        ctx: &amp;mut TxContext
+    ): Credential&lt;T&gt; {
+        let amount = coin::value(&amp;payment);
+
+        assert!(amount &gt;= auth.min_fee, 1);
+
+        if (option::is_some(&amp;auth.vote_dependency)) {
+            let dep_addr = option::borrow(&amp;auth.vote_dependency);
+            assert!(vote_authorized(vote_system) &amp;&amp; tx_context::sender(ctx) == *dep_addr, 2);
+        };
+
+        let coin_type = type_name::get&lt;Coin&lt;T&gt;&gt;();
+        let fee_balance = coin::into_balance&lt;T&gt;(payment);
+        let credential = Credential {
+            id: object::new(ctx),
+            verified: false,
+            fee_paid: fee_balance,
+            coin_type,
+        };
+
+        credential
+    }
+
+    #[allow(lint(self_transfer))]
+    public fun verify&lt;T&gt;(
+        auth: &amp;mut Auth,
+        credential: &amp;mut Credential&lt;T&gt;,
+        vote_system: &amp;mut VotingSystem,
+        payment: Coin&lt;T&gt;,
+        ctx: &amp;mut TxContext
+    ) {
+        assert!(balance::value(&amp;credential.fee_paid) &gt; auth.min_fee, 3);
+        assert!(coin::value(&amp;payment) &gt;= auth.min_fee, 4);
+
+        if (vote_authorized(vote_system) &amp;&amp; type_name::get&lt;Coin&lt;T&gt;&gt;() == credential.coin_type) {
+            credential.verified = true;
+            auth.authorized = true;
+            balance::join(&amp;mut credential.fee_paid, coin::into_balance(payment));
+        }else{
+            public_transfer(payment, ctx.sender());
+        }
+    }
+
+    public fun add_self_to_dependency(auth: &amp;mut Auth, ctx: &amp;mut TxContext) {
+        if (option::is_none(&amp;auth.vote_dependency)) {
+            auth.vote_dependency = option::some(tx_context::sender(ctx));
+        }
+    }
+
+    public fun is_authorized(auth: &amp;Auth): bool {
+        auth.authorized
+    }
+
+    public fun is_verified&lt;T&gt;(credential: &amp;Credential&lt;T&gt;): bool {
+        credential.verified
+    }
+}
+</code></pre>
+<p><code>chapter_8::flag_vault</code> 代码`</p>
+<pre><code>module chapter_8::flag_vault {
+    use sui::event::emit;
+    use chapter_8::vote::VotingSystem;
+    use chapter_8::auth::Auth;
+    use std::string::{Self, String};
+
+    public struct FlagEvent has copy, drop {
+        flag: String,
+        sender: address,
+    }
+
+    public entry fun get_flag(system: &amp;VotingSystem, auth: &amp;Auth, ctx: &amp;mut TxContext) {
+        assert!(chapter_8::vote::is_authorized(system) &amp;&amp; chapter_8::auth::is_authorized(auth), 1);
+        let sender = tx_context::sender(ctx);
+        emit(FlagEvent { flag: string::utf8(b"CTF{All_Chapters_Combined}"), sender });
+    }
+}
+</code></pre>
+<p><code>chapter_8::math_utils</code> 代码</p>
+<pre><code>module chapter_8::math_utils {
+    public fun calculate_weight(amount: u256): u256 {
+        let (weight, overflow) = check(amount);
+        if (overflow) {
+            999999999
+        } else {
+            weight
+        }
+    }
+
+    fun check(n: u256): (u256, bool) {
+        let mask = 0xff - 1;
+        if (n &gt; mask) {
+            (0, true)
+        } else {
+            (n, false)
+        }
+    }
+}
+</code></pre>
+<p><code>chapter_8::vote</code> 代码</p>
+<pre><code>module chapter_8::vote {
     use sui::coin::{Self, Coin, TreasuryCap};
-    use sui::transfer::{public_transfer, share_object, public_freeze_object};
-    use sui::vec_map::{Self, VecMap};
-    use sui::object_table::{Self, ObjectTable};
-    use std::string::String;
+    use sui::transfer::{share_object, public_freeze_object};
     use sui::balance::Balance;
+    use sui::vec_map::{Self, VecMap};
+    use sui::table::{Self, Table};
+    use chapter_8::math_utils;
 
     public struct VOTE has drop {}
 
@@ -174,110 +315,107 @@
     public struct Mintlist has key {
         id: UID,
         mintlist: VecMap&lt;address, u64&gt;,
+        reset_count: u64,
+        max_resets: u64,
     }
 
-    public struct VoteStore has key {
+    public struct VotingSystem has key {
         id: UID,
-        proposals: ObjectTable&lt;String, Proposal&gt;,
-        voters: VecMap&lt;address, u64&gt;,
+        balance: Balance&lt;VOTE&gt;,
+        vote_list: Table&lt;address, u64&gt;,
+        is_authorized: bool,
     }
-
-    public struct Proposal has key, store {
-        id: UID,
-        owner: address,
-        votes: u64,
-        locked_tokens: Balance&lt;VOTE&gt;,
-        closed: bool,
-    }
-
-    const E_INVALID_AMOUNT: u64 = 1;
-    const E_INVALID_PROPOSAL: u64 = 2;
-    const E_ALREADY_MINTED: u64 = 3;
-    const E_UNAUTHORIZED: u64 = 4;
-    const E_PROPOSAL_CLOSED: u64 = 5;
 
     fun init(witness: VOTE, ctx: &amp;mut TxContext) {
-        let (treasury_cap, meta) = coin::create_currency(
-            witness, 6, b"VOTE", b"VOTE", b"", option::none(), ctx
-        );
-
-        let vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
-        let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty() };
-        let store = VoteStore {
-            id: object::new(ctx),
-            proposals: object_table::new(ctx),
-            voters: vec_map::empty(),
-        };
-
-
+        let (treasury_cap, meta) = coin::create_currency(witness, 6, b"VOTE", b"VOTE", b"", option::none(), ctx);
+        let mut vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
+        let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty(), reset_count: 0, max_resets: 3 };
+        let coin = coin::mint(&amp;mut vote_cap.cap, 10000, ctx);
+        let balance = coin::into_balance(coin);
+        let system = VotingSystem { id: object::new(ctx), balance, vote_list: table::new(ctx), is_authorized: false };
         public_freeze_object(meta);
         share_object(vote_cap);
         share_object(mintlist);
-        share_object(store);
+        share_object(system);
     }
 
-    public entry fun mint(
-        vote_cap: &amp;mut Votecap,
-        mint_list: &amp;mut Mintlist,
-        ctx: &amp;mut TxContext
-    ) {
+    public fun mint(vote_cap: &amp;mut Votecap, mint_list: &amp;mut Mintlist, ctx: &amp;mut TxContext): Coin&lt;VOTE&gt; {
         let addr = tx_context::sender(ctx);
-        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr), E_ALREADY_MINTED);
+        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr) || mint_list.reset_count &lt; mint_list.max_resets, 1);
+        if (vec_map::contains(&amp;mint_list.mintlist, &amp;addr)) {
+            vec_map::remove(&amp;mut mint_list.mintlist, &amp;addr);
+            mint_list.reset_count = mint_list.reset_count + 1;
+        };
         let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
         vec_map::insert(&amp;mut mint_list.mintlist, addr, 100);
-        public_transfer(coin, addr);
+        coin
     }
 
-    public entry fun create_proposal(
-        store: &amp;mut VoteStore,
-        name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(!object_table::contains(&amp;store.proposals, name), E_INVALID_PROPOSAL);
-        let proposal = Proposal {
-            id: object::new(ctx),
-            owner: tx_context::sender(ctx),
-            votes: 0,
-            locked_tokens: zero&lt;VOTE&gt;(),
-            closed: false,
-        };
-        object_table::add(&amp;mut store.proposals, name, proposal);
-    }
-
-    public entry fun vote(
-        store: &amp;mut VoteStore,
-        vote_coin: Coin&lt;VOTE&gt;,
-        proposal_name: String,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(vote_coin.value() &gt; 0, E_INVALID_AMOUNT);
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
+    public entry fun vote(system: &amp;mut VotingSystem, vote_coin: Coin&lt;VOTE&gt;, ctx: &amp;mut TxContext) {
         let sender = tx_context::sender(ctx);
-        let amount = coin::into_balance(vote_coin);
-        if (vec_map::contains(&amp;store.voters, &amp;sender)) {
-            let voter_amount = vec_map::get_mut(&amp;mut store.voters, &amp;sender);
-            *voter_amount = *voter_amount + amount.value();
+        let amount = coin::value(&amp;vote_coin);
+        system.balance.join(coin::into_balance(vote_coin));
+        if (table::contains(&amp;system.vote_list, sender)) {
+            let current_amount = table::borrow_mut(&amp;mut system.vote_list, sender);
+            *current_amount = *current_amount + amount;
         } else {
-            vec_map::insert(&amp;mut store.voters, sender, amount.value());
+            table::add(&amp;mut system.vote_list, sender, amount);
         };
-        proposal.votes = proposal.votes + amount.value();
-        proposal.locked_tokens.join(amount);
+        let total_amount = *table::borrow(&amp;system.vote_list, sender);
+        let weight = math_utils::calculate_weight(total_amount as u256);
+        if (weight &gt; 1000000) {
+            system.is_authorized = true;
+        }
     }
 
-    public entry fun close_proposal(
-        store: &amp;mut VoteStore,
-        proposal_name: String,
+    public fun withdraw(system: &amp;mut VotingSystem, ctx: &amp;mut TxContext): Coin&lt;VOTE&gt; {
+        let amount = *table::borrow(&amp;system.vote_list, ctx.sender());
+        let coin = coin::from_balance(system.balance.split(amount), ctx);
+        coin
+    }
+
+    public fun is_authorized(system: &amp;VotingSystem): bool {
+        system.is_authorized
+    }
+}
+</code></pre>
+<h2 id="解题合约"><a class="header" href="#解题合约">解题合约</a></h2>
+<p><code>solve_chapter_8::solve</code> 代码</p>
+<pre><code>module solve_chapter_8::solve{
+
+    use chapter_8::vote::{mint, vote, withdraw, Votecap, Mintlist, VotingSystem, VOTE};
+    use chapter_8::flag_vault::get_flag;
+    use chapter_8::auth::{register, add_self_to_dependency , verify};
+    use chapter_8::auth::Auth;
+    use sui::transfer::public_transfer;
+
+    #[allow(lint(self_transfer))]
+    public fun solve(
+        vote_cap: &amp;mut Votecap,
+        mint_list: &amp;mut Mintlist,
+        system: &amp;mut VotingSystem,
+        auth: &amp;mut Auth,
         ctx: &amp;mut TxContext
-    ) {
-        assert!(object_table::contains(&amp;store.proposals, proposal_name), E_INVALID_PROPOSAL);
-        let proposal = object_table::borrow_mut(&amp;mut store.proposals, proposal_name);
-        let sender = tx_context::sender(ctx);
-        assert!(sender == proposal.owner, E_UNAUTHORIZED);
-        assert!(!proposal.closed, E_PROPOSAL_CLOSED);
-        proposal.closed = true;
-        let coin = coin::from_balance(proposal.locked_tokens.withdraw_all(), ctx);
-        public_transfer(coin, sender);
+    ){
+        let coin = mint(vote_cap, mint_list, ctx);
+        //100
+        vote(system,coin,ctx);
+        let coin1 = withdraw(system, ctx);
+        //200
+        vote(system,coin1,ctx);
+        let coin2 = withdraw(system, ctx);
+        //400
+        vote(system,coin2,ctx);
+        let coin3 = withdraw(system, ctx);
+        add_self_to_dependency(auth,ctx);
+
+        let mut cet = register&lt;VOTE&gt;(auth,coin3, system,ctx);
+        let coin4 = withdraw(system, ctx);
+        verify&lt;VOTE&gt;(auth,&amp;mut cet,system,coin4,ctx);
+
+        get_flag(system, auth, ctx);
+
+        public_transfer(cet, ctx.sender());
     }
 }
 </code></pre>
@@ -286,13 +424,10 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../../ctfbook/chapter_6/state_management.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../../ctfbook/chapter_8/vulnerability_analysis.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../ctfbook/chapter_7/intro.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -300,13 +435,10 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../../ctfbook/chapter_6/state_management.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../../ctfbook/chapter_8/vulnerability_analysis.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../ctfbook/chapter_7/intro.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>
